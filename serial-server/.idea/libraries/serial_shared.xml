@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="serial-shared">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/../unsign/serial-shared.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

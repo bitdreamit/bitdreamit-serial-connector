@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="serial-client">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/../unsign/serial-client.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

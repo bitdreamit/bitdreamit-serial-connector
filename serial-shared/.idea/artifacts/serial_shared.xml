@@ -1,0 +1,8 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="serial-shared">
+    <output-path>$PROJECT_DIR$/out/artifacts/serial_shared</output-path>
+    <root id="archive" name="serial-shared.jar">
+      <element id="module-output" name="serial-shared" />
+    </root>
+  </artifact>
+</component>
