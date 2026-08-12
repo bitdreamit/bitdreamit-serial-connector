@@ -13,6 +13,7 @@ import java.awt.event.ActionListener;
 public class SerialConnectorSettingsPanel extends JPanel implements ActionListener {
 
     private boolean isSender;
+    private ConnectorProperties properties;
 
     private MirthComboBox portBox;
     private JButton refreshPortsBtn;
@@ -73,9 +74,11 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         setBackground(Color.WHITE);
         setLayout(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(4, 4, 4, 4);
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.weightx = 1.0;
+        gbc.insets = new Insets(2, 4, 2, 4);
+        gbc.anchor = GridBagConstraints.WEST;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.weightx = 0;
+        gbc.weighty = 0;
         gbc.gridx = 0;
         gbc.gridy = 0;
 
@@ -89,6 +92,8 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
             add(createDestPanel(), gbc); gbc.gridy++;
         }
 
+        // Push everything to top-left; prevent stretch
+        gbc.weightx = 1.0;
         gbc.weighty = 1.0;
         gbc.fill = GridBagConstraints.BOTH;
         add(Box.createGlue(), gbc);
@@ -98,19 +103,19 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         JPanel p = new JPanel(new GridBagLayout());
         p.setBackground(Color.WHITE);
         p.setBorder(new TitledBorder("Basic Settings"));
-        GridBagConstraints g = new GridBagConstraints();
-        g.insets = new Insets(3, 4, 3, 4);
-        g.anchor = GridBagConstraints.WEST;
+        GridBagConstraints g = mkGbc();
 
         int row = 0;
 
-        g.gridy = row; g.gridx = 0; g.weightx = 0; g.fill = GridBagConstraints.NONE;
-        p.add(new JLabel("Port:"), g);
-        g.gridx = 1; g.weightx = 1; g.fill = GridBagConstraints.HORIZONTAL;
+        // Port row
+        g.gridy = row++;
+        g.gridx = 0; p.add(new JLabel("Port:"), g);
+        g.gridx = 1;
         portBox = new MirthComboBox();
         portBox.setEditable(true);
+        portBox.setPreferredSize(new Dimension(100, 22));
         p.add(portBox, g);
-        g.gridx = 2; g.weightx = 0; g.fill = GridBagConstraints.NONE;
+        g.gridx = 2;
         refreshPortsBtn = new JButton("Refresh");
         refreshPortsBtn.setToolTipText("Shows common ports. Server auto-detect works at runtime.");
         refreshPortsBtn.addActionListener(this);
@@ -119,61 +124,65 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         autoDetectPortBox = new MirthCheckBox("Auto-detect");
         autoDetectPortBox.setBackground(Color.WHITE);
         p.add(autoDetectPortBox, g);
-        row++;
 
-        g.gridy = row; g.gridx = 0; g.weightx = 0;
-        p.add(new JLabel("Baud Rate:"), g);
-        g.gridx = 1; g.weightx = 1; g.fill = GridBagConstraints.HORIZONTAL;
+        // Baud row
+        g.gridy = row++;
+        g.gridx = 0; p.add(new JLabel("Baud Rate:"), g);
+        g.gridx = 1;
         baudBox = new MirthComboBox();
         baudBox.setModel(new DefaultComboBoxModel<>(new String[]{"9600", "19200", "38400", "57600", "115200", "230400"}));
+        baudBox.setPreferredSize(new Dimension(100, 22));
         p.add(baudBox, g);
-        g.gridx = 2; g.gridwidth = 2; g.weightx = 0; g.fill = GridBagConstraints.NONE;
+        g.gridx = 2; g.gridwidth = 2;
         autoDetectBaudBox = new MirthCheckBox("Auto-detect");
         autoDetectBaudBox.setBackground(Color.WHITE);
         p.add(autoDetectBaudBox, g);
         g.gridwidth = 1;
-        row++;
 
-        g.gridy = row; g.gridx = 0; g.weightx = 0;
-        p.add(new JLabel("Data Bits:"), g);
-        g.gridx = 1; g.weightx = 1; g.fill = GridBagConstraints.HORIZONTAL;
+        // Data/Stop bits row
+        g.gridy = row++;
+        g.gridx = 0; p.add(new JLabel("Data Bits:"), g);
+        g.gridx = 1;
         dataBitsBox = new MirthComboBox();
         dataBitsBox.setModel(new DefaultComboBoxModel<>(new String[]{"5", "6", "7", "8"}));
         dataBitsBox.setSelectedItem("8");
+        dataBitsBox.setPreferredSize(new Dimension(60, 22));
         p.add(dataBitsBox, g);
-        g.gridx = 2; g.weightx = 0; g.fill = GridBagConstraints.NONE;
-        p.add(new JLabel("Stop Bits:"), g);
-        g.gridx = 3; g.weightx = 1; g.fill = GridBagConstraints.HORIZONTAL;
+        g.gridx = 2; p.add(new JLabel("Stop Bits:"), g);
+        g.gridx = 3;
         stopBitsBox = new MirthComboBox();
         stopBitsBox.setModel(new DefaultComboBoxModel<>(new String[]{"1", "1.5", "2"}));
+        stopBitsBox.setPreferredSize(new Dimension(60, 22));
         p.add(stopBitsBox, g);
-        row++;
 
-        g.gridy = row; g.gridx = 0; g.weightx = 0;
-        p.add(new JLabel("Parity:"), g);
-        g.gridx = 1; g.weightx = 1; g.fill = GridBagConstraints.HORIZONTAL;
+        // Parity/Flow row
+        g.gridy = row++;
+        g.gridx = 0; p.add(new JLabel("Parity:"), g);
+        g.gridx = 1;
         parityBox = new MirthComboBox();
         parityBox.setModel(new DefaultComboBoxModel<>(new String[]{"None", "Odd", "Even", "Mark", "Space"}));
+        parityBox.setPreferredSize(new Dimension(80, 22));
         p.add(parityBox, g);
-        g.gridx = 2; g.weightx = 0; g.fill = GridBagConstraints.NONE;
-        p.add(new JLabel("Flow Control:"), g);
-        g.gridx = 3; g.weightx = 1; g.fill = GridBagConstraints.HORIZONTAL;
+        g.gridx = 2; p.add(new JLabel("Flow:"), g);
+        g.gridx = 3;
         flowBox = new MirthComboBox();
         flowBox.setModel(new DefaultComboBoxModel<>(new String[]{"None", "RTS/CTS", "XON/XOFF", "DSR/DTR"}));
+        flowBox.setPreferredSize(new Dimension(100, 22));
         p.add(flowBox, g);
-        row++;
 
-        g.gridy = row; g.gridx = 0; g.weightx = 0;
-        p.add(new JLabel("Charset:"), g);
-        g.gridx = 1; g.weightx = 1; g.fill = GridBagConstraints.HORIZONTAL;
+        // Charset/Binary row
+        g.gridy = row++;
+        g.gridx = 0; p.add(new JLabel("Charset:"), g);
+        g.gridx = 1; g.gridwidth = 2;
         charsetBox = new MirthComboBox();
         charsetBox.setModel(new DefaultComboBoxModel<>(new String[]{"UTF-8", "ISO-8859-1", "US-ASCII", "Windows-1252"}));
+        charsetBox.setPreferredSize(new Dimension(120, 22));
         p.add(charsetBox, g);
-        g.gridx = 2; g.gridwidth = 2; g.weightx = 0; g.fill = GridBagConstraints.NONE;
-        binaryBox = new MirthCheckBox("Binary Mode (Base64)");
+        g.gridwidth = 1;
+        g.gridx = 3;
+        binaryBox = new MirthCheckBox("Binary (Base64)");
         binaryBox.setBackground(Color.WHITE);
         p.add(binaryBox, g);
-        g.gridwidth = 1;
 
         return p;
     }
@@ -182,27 +191,26 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         JPanel p = new JPanel(new GridBagLayout());
         p.setBackground(Color.WHITE);
         p.setBorder(new TitledBorder("Timeouts & Buffers"));
-        GridBagConstraints g = new GridBagConstraints();
-        g.insets = new Insets(3, 4, 3, 4);
-        g.anchor = GridBagConstraints.WEST;
+        GridBagConstraints g = mkGbc();
 
-        g.gridy = 0; g.gridx = 0; g.weightx = 0;
-        p.add(new JLabel("Read Timeout (ms):"), g);
-        g.gridx = 1; g.weightx = 1; g.fill = GridBagConstraints.HORIZONTAL;
+        g.gridy = 0;
+        g.gridx = 0; p.add(new JLabel("Read Timeout (ms):"), g);
+        g.gridx = 1;
         readTimeoutField = new JTextField("1000", 8);
+        readTimeoutField.setPreferredSize(new Dimension(70, 22));
         p.add(readTimeoutField, g);
-        g.gridx = 2; g.weightx = 0; g.fill = GridBagConstraints.NONE;
-        p.add(new JLabel("Write Timeout (ms):"), g);
-        g.gridx = 3; g.weightx = 1; g.fill = GridBagConstraints.HORIZONTAL;
+        g.gridx = 2; p.add(new JLabel("Write Timeout (ms):"), g);
+        g.gridx = 3;
         writeTimeoutField = new JTextField("1000", 8);
+        writeTimeoutField.setPreferredSize(new Dimension(70, 22));
         p.add(writeTimeoutField, g);
 
-        g.gridy = 1; g.gridx = 0; g.weightx = 0;
-        p.add(new JLabel("Buffer Size:"), g);
-        g.gridx = 1; g.weightx = 1; g.fill = GridBagConstraints.HORIZONTAL;
+        g.gridy = 1;
+        g.gridx = 0; p.add(new JLabel("Buffer Size:"), g);
+        g.gridx = 1;
         bufferSizeField = new JTextField("4096", 8);
+        bufferSizeField.setPreferredSize(new Dimension(70, 22));
         p.add(bufferSizeField, g);
-        g.gridwidth = 1;
 
         return p;
     }
@@ -211,11 +219,10 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         JPanel p = new JPanel(new GridBagLayout());
         p.setBackground(Color.WHITE);
         p.setBorder(new TitledBorder("Signal Control"));
-        GridBagConstraints g = new GridBagConstraints();
-        g.insets = new Insets(3, 4, 3, 4);
-        g.anchor = GridBagConstraints.WEST;
+        GridBagConstraints g = mkGbc();
 
-        g.gridy = 0; g.gridx = 0;
+        g.gridy = 0;
+        g.gridx = 0;
         dtrBox = new MirthCheckBox("Set DTR");
         dtrBox.setSelected(true);
         dtrBox.setBackground(Color.WHITE);
@@ -226,26 +233,28 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         rtsBox.setBackground(Color.WHITE);
         p.add(rtsBox, g);
         g.gridx = 2;
-        waitCtsBox = new MirthCheckBox("Wait for CTS");
+        waitCtsBox = new MirthCheckBox("Wait CTS");
         waitCtsBox.setBackground(Color.WHITE);
         p.add(waitCtsBox, g);
         g.gridx = 3;
-        waitDsrBox = new MirthCheckBox("Wait for DSR");
+        waitDsrBox = new MirthCheckBox("Wait DSR");
         waitDsrBox.setBackground(Color.WHITE);
         p.add(waitDsrBox, g);
 
-        g.gridy = 1; g.gridx = 0;
-        waitDcdBox = new MirthCheckBox("Wait for DCD");
+        g.gridy = 1;
+        g.gridx = 0;
+        waitDcdBox = new MirthCheckBox("Wait DCD");
         waitDcdBox.setBackground(Color.WHITE);
         p.add(waitDcdBox, g);
-        g.gridx = 1; g.gridwidth = 3; g.fill = GridBagConstraints.HORIZONTAL;
+        g.gridx = 1; g.gridwidth = 3;
         JPanel timeoutRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         timeoutRow.setBackground(Color.WHITE);
-        timeoutRow.add(new JLabel("Signal Wait Timeout (ms):"));
-        signalTimeoutField = new JTextField("1000", 8);
+        timeoutRow.add(new JLabel("Signal Timeout (ms):"));
+        signalTimeoutField = new JTextField("1000", 6);
+        signalTimeoutField.setPreferredSize(new Dimension(60, 22));
         timeoutRow.add(signalTimeoutField);
         p.add(timeoutRow, g);
-        g.gridwidth = 1; g.fill = GridBagConstraints.NONE;
+        g.gridwidth = 1;
 
         return p;
     }
@@ -254,9 +263,7 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         JPanel p = new JPanel(new GridBagLayout());
         p.setBackground(Color.WHITE);
         p.setBorder(new TitledBorder("Break & Flush"));
-        GridBagConstraints g = new GridBagConstraints();
-        g.insets = new Insets(3, 4, 3, 4);
-        g.anchor = GridBagConstraints.WEST;
+        GridBagConstraints g = mkGbc();
 
         g.gridy = 0; g.gridx = 0; g.gridwidth = 4;
         breakBox = new MirthCheckBox("Send Break Before Open");
@@ -267,17 +274,18 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         JPanel breakRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         breakRow.setBackground(Color.WHITE);
         breakRow.add(new JLabel("Break Duration (ms):"));
-        breakDurField = new JTextField("100", 8);
+        breakDurField = new JTextField("100", 6);
+        breakDurField.setPreferredSize(new Dimension(60, 22));
         breakRow.add(breakDurField);
         p.add(breakRow, g);
 
         g.gridy = 2; g.gridx = 0; g.gridwidth = 2;
-        flushOpenBox = new MirthCheckBox("Flush Buffers on Open");
+        flushOpenBox = new MirthCheckBox("Flush on Open");
         flushOpenBox.setSelected(true);
         flushOpenBox.setBackground(Color.WHITE);
         p.add(flushOpenBox, g);
         g.gridx = 2; g.gridwidth = 2;
-        flushCloseBox = new MirthCheckBox("Flush Buffers on Close");
+        flushCloseBox = new MirthCheckBox("Flush on Close");
         flushCloseBox.setSelected(true);
         flushCloseBox.setBackground(Color.WHITE);
         p.add(flushCloseBox, g);
@@ -289,9 +297,7 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         JPanel p = new JPanel(new GridBagLayout());
         p.setBackground(Color.WHITE);
         p.setBorder(new TitledBorder("Health Monitor"));
-        GridBagConstraints g = new GridBagConstraints();
-        g.insets = new Insets(3, 4, 3, 4);
-        g.anchor = GridBagConstraints.WEST;
+        GridBagConstraints g = mkGbc();
 
         g.gridy = 0; g.gridx = 0; g.gridwidth = 4;
         healthBox = new MirthCheckBox("Enable Auto-Reconnect");
@@ -300,20 +306,22 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         p.add(healthBox, g);
 
         g.gridy = 1; g.gridx = 0; g.gridwidth = 1;
-        p.add(new JLabel("Check Interval (ms):"), g);
+        p.add(new JLabel("Interval (ms):"), g);
         g.gridx = 1;
-        healthIntervalField = new JTextField("5000", 8);
+        healthIntervalField = new JTextField("5000", 6);
+        healthIntervalField.setPreferredSize(new Dimension(60, 22));
         p.add(healthIntervalField, g);
-        g.gridx = 2;
-        p.add(new JLabel("Max Reconnects:"), g);
+        g.gridx = 2; p.add(new JLabel("Max Retry:"), g);
         g.gridx = 3;
-        maxReconnectField = new JTextField("10", 8);
+        maxReconnectField = new JTextField("10", 6);
+        maxReconnectField.setPreferredSize(new Dimension(50, 22));
         p.add(maxReconnectField, g);
 
         g.gridy = 2; g.gridx = 0;
-        p.add(new JLabel("Reconnect Delay (ms):"), g);
+        p.add(new JLabel("Retry Delay (ms):"), g);
         g.gridx = 1;
-        reconnectDelayField = new JTextField("5000", 8);
+        reconnectDelayField = new JTextField("5000", 6);
+        reconnectDelayField.setPreferredSize(new Dimension(60, 22));
         p.add(reconnectDelayField, g);
 
         return p;
@@ -323,9 +331,7 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         JPanel p = new JPanel(new GridBagLayout());
         p.setBackground(Color.WHITE);
         p.setBorder(new TitledBorder("Protocol Analyzer"));
-        GridBagConstraints g = new GridBagConstraints();
-        g.insets = new Insets(3, 4, 3, 4);
-        g.anchor = GridBagConstraints.WEST;
+        GridBagConstraints g = mkGbc();
 
         g.gridy = 0; g.gridx = 0; g.gridwidth = 4;
         analyzerBox = new MirthCheckBox("Enable Protocol Logging");
@@ -333,9 +339,10 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         p.add(analyzerBox, g);
 
         g.gridy = 1; g.gridx = 0; g.gridwidth = 1;
-        p.add(new JLabel("Max Log Entries:"), g);
+        p.add(new JLabel("Max Entries:"), g);
         g.gridx = 1;
-        maxLogField = new JTextField("1000", 8);
+        maxLogField = new JTextField("1000", 6);
+        maxLogField.setPreferredSize(new Dimension(60, 22));
         p.add(maxLogField, g);
 
         return p;
@@ -345,31 +352,41 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         JPanel p = new JPanel(new GridBagLayout());
         p.setBackground(Color.WHITE);
         p.setBorder(new TitledBorder("Destination Options"));
-        GridBagConstraints g = new GridBagConstraints();
-        g.insets = new Insets(3, 4, 3, 4);
-        g.anchor = GridBagConstraints.WEST;
+        GridBagConstraints g = mkGbc();
 
         g.gridy = 0; g.gridx = 0; g.gridwidth = 2;
-        waitAckBox = new MirthCheckBox("Wait for ACK after Write");
+        waitAckBox = new MirthCheckBox("Wait for ACK");
         waitAckBox.setBackground(Color.WHITE);
         p.add(waitAckBox, g);
         g.gridx = 2; g.gridwidth = 2;
-        keepOpenBox = new MirthCheckBox("Keep Connection Open (Pool)");
+        keepOpenBox = new MirthCheckBox("Keep Connection Open");
         keepOpenBox.setBackground(Color.WHITE);
         p.add(keepOpenBox, g);
 
         g.gridy = 1; g.gridx = 0; g.gridwidth = 1;
         p.add(new JLabel("ACK Timeout (ms):"), g);
         g.gridx = 1;
-        ackTimeoutField = new JTextField("1000", 8);
+        ackTimeoutField = new JTextField("1000", 6);
+        ackTimeoutField.setPreferredSize(new Dimension(60, 22));
         p.add(ackTimeoutField, g);
         g.gridx = 2;
         p.add(new JLabel("ACK Pattern (hex):"), g);
         g.gridx = 3;
-        ackPatternField = new JTextField("06", 8);
+        ackPatternField = new JTextField("06", 6);
+        ackPatternField.setPreferredSize(new Dimension(60, 22));
         p.add(ackPatternField, g);
 
         return p;
+    }
+
+    private GridBagConstraints mkGbc() {
+        GridBagConstraints g = new GridBagConstraints();
+        g.insets = new Insets(2, 4, 2, 4);
+        g.anchor = GridBagConstraints.WEST;
+        g.fill = GridBagConstraints.NONE;
+        g.weightx = 0;
+        g.weighty = 0;
+        return g;
     }
 
     @Override
@@ -381,9 +398,7 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
 
     private void refreshPortList() {
         portBox.removeAllItems();
-        for (int i = 1; i <= 20; i++) {
-            portBox.addItem("COM" + i);
-        }
+        for (int i = 1; i <= 20; i++) portBox.addItem("COM" + i);
         for (int i = 1; i <= 10; i++) {
             portBox.addItem("/dev/ttyUSB" + i);
             portBox.addItem("/dev/ttyACM" + i);
@@ -391,22 +406,27 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
     }
 
     public ConnectorProperties getProperties() {
+        if (properties == null) {
+            properties = isSender ? new SerialDispatcherProperties() : new SerialReceiverProperties();
+        }
+        SerialPortConfig config;
         if (isSender) {
-            SerialDispatcherProperties props = new SerialDispatcherProperties();
-            fillPortConfig(props.getPortConfig());
+            SerialDispatcherProperties props = (SerialDispatcherProperties) properties;
+            config = props.getPortConfig();
             props.setWaitForAckAfterWrite(waitAckBox.isSelected());
             props.setAckTimeout(parseInt(ackTimeoutField.getText(), 1000));
             props.setAckPattern(parseHex(ackPatternField.getText(), new byte[]{0x06}));
             props.setKeepConnectionOpen(keepOpenBox.isSelected());
-            return props;
         } else {
-            SerialReceiverProperties props = new SerialReceiverProperties();
-            fillPortConfig(props.getPortConfig());
-            return props;
+            SerialReceiverProperties props = (SerialReceiverProperties) properties;
+            config = props.getPortConfig();
         }
+        fillPortConfig(config);
+        return properties;
     }
 
     public void setProperties(ConnectorProperties properties) {
+        this.properties = properties;
         SerialPortConfig config;
         if (isSender) {
             SerialDispatcherProperties props = (SerialDispatcherProperties) properties;
@@ -507,12 +527,8 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         } else {
             if (highlight) baudBox.setBackground(Color.WHITE);
         }
-        if (config.getDataBits() < 5 || config.getDataBits() > 8) {
-            valid = false;
-        }
-        if (config.getReadTimeout() < 0 || config.getWriteTimeout() < 0) {
-            valid = false;
-        }
+        if (config.getDataBits() < 5 || config.getDataBits() > 8) valid = false;
+        if (config.getReadTimeout() < 0 || config.getWriteTimeout() < 0) valid = false;
         if (isSender) {
             SerialDispatcherProperties dp = (SerialDispatcherProperties) properties;
             if (dp.isWaitForAckAfterWrite() && (dp.getAckPattern() == null || dp.getAckPattern().length == 0)) {

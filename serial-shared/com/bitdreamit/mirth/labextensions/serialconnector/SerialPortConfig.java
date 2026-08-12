@@ -40,6 +40,13 @@ public class SerialPortConfig implements Serializable, Cloneable {
     private boolean protocolLoggingEnabled = false;
     private int maxLogEntries = 1000;
 
+    // Transmission Mode (like TCP Listener)
+    private String transmissionMode = "RAW"; // RAW, LINE, FRAME, MLLP, ASTM
+    private String lineDelimiter = "\\r\\n"; // for LINE mode: \r\n, \n, \r, or custom
+    private String frameStartBytes = ""; // hex string for FRAME mode
+    private String frameEndBytes = ""; // hex string for FRAME mode
+
+    // Getters and Setters
     public String getPortName() { return portName; }
     public void setPortName(String portName) { this.portName = portName; }
     public int getBaudRate() { return baudRate; }
@@ -100,6 +107,15 @@ public class SerialPortConfig implements Serializable, Cloneable {
     public int getMaxLogEntries() { return maxLogEntries; }
     public void setMaxLogEntries(int maxLogEntries) { this.maxLogEntries = maxLogEntries; }
 
+    public String getTransmissionMode() { return transmissionMode; }
+    public void setTransmissionMode(String transmissionMode) { this.transmissionMode = transmissionMode; }
+    public String getLineDelimiter() { return lineDelimiter; }
+    public void setLineDelimiter(String lineDelimiter) { this.lineDelimiter = lineDelimiter; }
+    public String getFrameStartBytes() { return frameStartBytes; }
+    public void setFrameStartBytes(String frameStartBytes) { this.frameStartBytes = frameStartBytes; }
+    public String getFrameEndBytes() { return frameEndBytes; }
+    public void setFrameEndBytes(String frameEndBytes) { this.frameEndBytes = frameEndBytes; }
+
     public int[] getAutoBaudRates() {
         return new int[]{9600, 19200, 38400, 57600, 115200};
     }
@@ -129,7 +145,11 @@ public class SerialPortConfig implements Serializable, Cloneable {
                 && healthMonitorEnabled == that.healthMonitorEnabled && healthInterval == that.healthInterval
                 && maxReconnects == that.maxReconnects && reconnectDelay == that.reconnectDelay
                 && protocolLoggingEnabled == that.protocolLoggingEnabled && maxLogEntries == that.maxLogEntries
-                && Objects.equals(portName, that.portName) && Objects.equals(charset, that.charset);
+                && Objects.equals(portName, that.portName) && Objects.equals(charset, that.charset)
+                && Objects.equals(transmissionMode, that.transmissionMode)
+                && Objects.equals(lineDelimiter, that.lineDelimiter)
+                && Objects.equals(frameStartBytes, that.frameStartBytes)
+                && Objects.equals(frameEndBytes, that.frameEndBytes);
     }
 
     @Override
@@ -138,6 +158,7 @@ public class SerialPortConfig implements Serializable, Cloneable {
                 binaryMode, readTimeout, writeTimeout, bufferSize, setDtr, setRts, waitCts, waitDsr,
                 waitDcd, signalTimeout, sendBreak, breakDuration, flushOnOpen, flushOnClose,
                 autoDetectPort, autoDetectBaud, healthMonitorEnabled, healthInterval, maxReconnects,
-                reconnectDelay, protocolLoggingEnabled, maxLogEntries);
+                reconnectDelay, protocolLoggingEnabled, maxLogEntries, transmissionMode,
+                lineDelimiter, frameStartBytes, frameEndBytes);
     }
 }

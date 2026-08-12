@@ -16,6 +16,10 @@ import org.apache.log4j.Logger;
 
 import java.util.Arrays;
 
+/**
+ * Pure Serial Transport — Dumb pipe. No protocol awareness.
+ * Protocol framing is handled by the channel's DataType plugin.
+ */
 public class SerialDestinationConnector extends DestinationConnector {
     private static final Logger logger = Logger.getLogger(SerialDestinationConnector.class);
     private EventController eventController = ControllerFactory.getFactory().createEventController();
@@ -63,7 +67,6 @@ public class SerialDestinationConnector extends DestinationConnector {
 
     @Override
     public void replaceConnectorProperties(ConnectorProperties props, ConnectorMessage message) {
-        // No dynamic property replacement needed for serial transport
     }
 
     @Override
@@ -81,19 +84,16 @@ public class SerialDestinationConnector extends DestinationConnector {
             }
 
             String payload = message.getEncoded().getContent();
-            byte[] data;
-            if (config.isBinaryMode()) {
-                data = java.util.Base64.getDecoder().decode(payload);
-            } else {
-                data = payload.getBytes(config.getCharset());
-            }
+            byte[] data = config.isBinaryMode()
+                    ? java.util.Base64.getDecoder().decode(payload)
+                    : payload.getBytes(java.nio.charset.Charset.forName(config.getCharset()));
 
             int written = port.writeBytes(data, data.length);
             if (written < 0) {
                 throw new Exception("Failed to write to serial port");
             }
 
-            logger.info("Serial destination wrote " + written + " bytes to " + config.getPortName());
+            logger.info("Wrote " + written + " bytes to " + config.getPortName());
 
             if (props.isWaitForAckAfterWrite()) {
                 byte[] ackBuffer = new byte[props.getAckPattern().length];
@@ -107,8 +107,7 @@ public class SerialDestinationConnector extends DestinationConnector {
                 }
 
                 if (totalRead < ackBuffer.length || !Arrays.equals(ackBuffer, props.getAckPattern())) {
-                    throw new Exception("ACK timeout or mismatch. Expected: " + Arrays.toString(props.getAckPattern())
-                            + ", Received: " + (totalRead > 0 ? Arrays.toString(Arrays.copyOf(ackBuffer, totalRead)) : "none"));
+                    throw new Exception("ACK timeout or mismatch");
                 }
             }
 
@@ -116,10 +115,10 @@ public class SerialDestinationConnector extends DestinationConnector {
                 SerialPortManager.releasePort(port.getSystemPortName(), true);
             }
 
-            return new Response(Status.SENT, "Sent " + written + " bytes to " + config.getPortName());
+            return new Response(Status.SENT, "Sent " + written + " bytes");
 
         } catch (Exception e) {
-            logger.error("Serial destination error on " + config.getPortName(), e);
+            logger.error("Serial write error", e);
             eventController.dispatchEvent(new ErrorEvent(
                     getChannelId(), getMetaDataId(), message.getMessageId(), ErrorEventType.DESTINATION_CONNECTOR,
                     getConnectorProperties().getName(), "Serial write error", e.getMessage(), e));
