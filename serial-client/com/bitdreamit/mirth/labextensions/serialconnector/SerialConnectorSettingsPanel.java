@@ -12,16 +12,12 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
 /**
- * Universal Serial Connector Settings Panel.
- * Transmission-mode agnostic — works with any Mirth DataType (HL7, ASTM, Delimited, XML, etc.)
+ * Pure Serial Transport Settings — No protocol awareness.
+ * Protocol framing is handled by the channel's DataType plugin.
  */
 public class SerialConnectorSettingsPanel extends ConnectorSettingsPanel implements ActionListener {
 
     private boolean isSender;
-
-    // Transmission
-    private MirthComboBox transmissionModeBox;
-    private JTextField messageDelimiterField;
 
     // Basic
     private MirthComboBox portBox;
@@ -96,7 +92,6 @@ public class SerialConnectorSettingsPanel extends ConnectorSettingsPanel impleme
         gbc.gridx = 0;
         gbc.gridy = 0;
 
-        add(createTransmissionPanel(), gbc); gbc.gridy++;
         add(createBasicPanel(), gbc); gbc.gridy++;
         add(createTimeoutPanel(), gbc); gbc.gridy++;
         add(createSignalPanel(), gbc); gbc.gridy++;
@@ -110,39 +105,6 @@ public class SerialConnectorSettingsPanel extends ConnectorSettingsPanel impleme
         gbc.weighty = 1.0;
         gbc.fill = GridBagConstraints.BOTH;
         add(Box.createGlue(), gbc);
-    }
-
-    private JPanel createTransmissionPanel() {
-        JPanel p = new JPanel(new GridBagLayout());
-        p.setBackground(Color.WHITE);
-        p.setBorder(new TitledBorder("Transmission Mode (Transport Layer)"));
-        GridBagConstraints g = new GridBagConstraints();
-        g.insets = new Insets(3, 4, 3, 4);
-        g.anchor = GridBagConstraints.WEST;
-
-        g.gridy = 0; g.gridx = 0; g.weightx = 0; g.fill = GridBagConstraints.NONE;
-        p.add(new JLabel("Mode:"), g);
-        g.gridx = 1; g.weightx = 1; g.fill = GridBagConstraints.HORIZONTAL;
-        transmissionModeBox = new MirthComboBox();
-        transmissionModeBox.setModel(new DefaultComboBoxModel<>(
-            new String[]{"BASIC", "MLLP", "ASTM_E1381"}
-        ));
-        transmissionModeBox.setToolTipText(
-            "<html>BASIC = Raw/delimited bytes (works with any DataType)<br>" +
-            "MLLP = HL7 Minimal Lower Layer Protocol framing<br>" +
-            "ASTM_E1381 = ASTM E1381 session + frame protocol</html>"
-        );
-        transmissionModeBox.addActionListener(this);
-        p.add(transmissionModeBox, g);
-
-        g.gridy = 1; g.gridx = 0; g.weightx = 0;
-        p.add(new JLabel("Delimiter (BASIC only):"), g);
-        g.gridx = 1; g.weightx = 1; g.fill = GridBagConstraints.HORIZONTAL;
-        messageDelimiterField = new JTextField("\\r\\n", 10);
-        messageDelimiterField.setToolTipText("Escape sequences: \\r \\n \\t");
-        p.add(messageDelimiterField, g);
-
-        return p;
     }
 
     private JPanel createBasicPanel() {
@@ -221,7 +183,7 @@ public class SerialConnectorSettingsPanel extends ConnectorSettingsPanel impleme
         charsetBox.setModel(new DefaultComboBoxModel<>(new String[]{"UTF-8", "ISO-8859-1", "US-ASCII", "Windows-1252"}));
         p.add(charsetBox, g);
         g.gridx = 2; g.gridwidth = 2; g.weightx = 0; g.fill = GridBagConstraints.NONE;
-        binaryBox = new MirthCheckBox("Binary Mode (hex)");
+        binaryBox = new MirthCheckBox("Binary Mode (Base64)");
         binaryBox.setBackground(Color.WHITE);
         p.add(binaryBox, g);
         g.gridwidth = 1;
@@ -314,17 +276,20 @@ public class SerialConnectorSettingsPanel extends ConnectorSettingsPanel impleme
         breakBox.setBackground(Color.WHITE);
         p.add(breakBox, g);
 
-        g.gridy = 1; g.gridx = 0; g.gridwidth = 1; g.weightx = 0;
-        p.add(new JLabel("Break Duration (ms):"), g);
-        g.gridx = 1; g.weightx = 1; g.fill = GridBagConstraints.HORIZONTAL;
+        g.gridy = 1; g.gridx = 0; g.gridwidth = 2;
+        JPanel breakRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        breakRow.setBackground(Color.WHITE);
+        breakRow.add(new JLabel("Break Duration (ms):"));
         breakDurField = new JTextField("100", 8);
-        p.add(breakDurField, g);
-        g.gridx = 2; g.weightx = 0; g.fill = GridBagConstraints.NONE;
+        breakRow.add(breakDurField);
+        p.add(breakRow, g);
+
+        g.gridy = 2; g.gridx = 0; g.gridwidth = 2;
         flushOpenBox = new MirthCheckBox("Flush Buffers on Open");
         flushOpenBox.setSelected(true);
         flushOpenBox.setBackground(Color.WHITE);
         p.add(flushOpenBox, g);
-        g.gridx = 3;
+        g.gridx = 2; g.gridwidth = 2;
         flushCloseBox = new MirthCheckBox("Flush Buffers on Close");
         flushCloseBox.setSelected(true);
         flushCloseBox.setBackground(Color.WHITE);
@@ -342,28 +307,27 @@ public class SerialConnectorSettingsPanel extends ConnectorSettingsPanel impleme
         g.anchor = GridBagConstraints.WEST;
 
         g.gridy = 0; g.gridx = 0; g.gridwidth = 4;
-        healthBox = new MirthCheckBox("Enable Health Monitor & Auto-Reconnect");
+        healthBox = new MirthCheckBox("Enable Auto-Reconnect");
         healthBox.setSelected(true);
         healthBox.setBackground(Color.WHITE);
         p.add(healthBox, g);
 
-        g.gridy = 1; g.gridx = 0; g.gridwidth = 1; g.weightx = 0;
+        g.gridy = 1; g.gridx = 0; g.gridwidth = 1;
         p.add(new JLabel("Check Interval (ms):"), g);
-        g.gridx = 1; g.weightx = 1; g.fill = GridBagConstraints.HORIZONTAL;
-        healthIntervalField = new JTextField("30000", 8);
+        g.gridx = 1;
+        healthIntervalField = new JTextField("5000", 8);
         p.add(healthIntervalField, g);
-        g.gridx = 2; g.weightx = 0; g.fill = GridBagConstraints.NONE;
-        p.add(new JLabel("Max Reconnect:"), g);
-        g.gridx = 3; g.weightx = 1; g.fill = GridBagConstraints.HORIZONTAL;
+        g.gridx = 2;
+        p.add(new JLabel("Max Reconnects:"), g);
+        g.gridx = 3;
         maxReconnectField = new JTextField("10", 8);
         p.add(maxReconnectField, g);
 
-        g.gridy = 2; g.gridx = 0; g.weightx = 0;
+        g.gridy = 2; g.gridx = 0;
         p.add(new JLabel("Reconnect Delay (ms):"), g);
-        g.gridx = 1; g.weightx = 1; g.fill = GridBagConstraints.HORIZONTAL;
+        g.gridx = 1;
         reconnectDelayField = new JTextField("5000", 8);
         p.add(reconnectDelayField, g);
-        g.gridwidth = 1;
 
         return p;
     }
@@ -376,16 +340,16 @@ public class SerialConnectorSettingsPanel extends ConnectorSettingsPanel impleme
         g.insets = new Insets(3, 4, 3, 4);
         g.anchor = GridBagConstraints.WEST;
 
-        g.gridy = 0; g.gridx = 0; g.gridwidth = 1;
-        analyzerBox = new MirthCheckBox("Enable Protocol Analyzer");
+        g.gridy = 0; g.gridx = 0; g.gridwidth = 4;
+        analyzerBox = new MirthCheckBox("Enable Protocol Logging");
         analyzerBox.setBackground(Color.WHITE);
         p.add(analyzerBox, g);
-        g.gridx = 1; g.weightx = 0;
+
+        g.gridy = 1; g.gridx = 0; g.gridwidth = 1;
         p.add(new JLabel("Max Log Entries:"), g);
-        g.gridx = 2; g.weightx = 1; g.fill = GridBagConstraints.HORIZONTAL;
+        g.gridx = 1;
         maxLogField = new JTextField("1000", 8);
         p.add(maxLogField, g);
-        g.fill = GridBagConstraints.NONE;
 
         return p;
     }
@@ -398,40 +362,27 @@ public class SerialConnectorSettingsPanel extends ConnectorSettingsPanel impleme
         g.insets = new Insets(3, 4, 3, 4);
         g.anchor = GridBagConstraints.WEST;
 
-        g.gridy = 0; g.gridx = 0; g.gridwidth = 4;
+        g.gridy = 0; g.gridx = 0; g.gridwidth = 2;
+        waitAckBox = new MirthCheckBox("Wait for ACK after Write");
+        waitAckBox.setBackground(Color.WHITE);
+        p.add(waitAckBox, g);
+        g.gridx = 2; g.gridwidth = 2;
         keepOpenBox = new MirthCheckBox("Keep Connection Open (Pool)");
         keepOpenBox.setBackground(Color.WHITE);
         p.add(keepOpenBox, g);
 
-        g.gridy = 1; g.gridx = 0; g.gridwidth = 4;
-        waitAckBox = new MirthCheckBox("Wait for ACK After Write");
-        waitAckBox.setBackground(Color.WHITE);
-        p.add(waitAckBox, g);
-
-        g.gridy = 2; g.gridx = 0; g.gridwidth = 1; g.weightx = 0;
+        g.gridy = 1; g.gridx = 0; g.gridwidth = 1;
         p.add(new JLabel("ACK Timeout (ms):"), g);
-        g.gridx = 1; g.weightx = 1; g.fill = GridBagConstraints.HORIZONTAL;
+        g.gridx = 1;
         ackTimeoutField = new JTextField("1000", 8);
         p.add(ackTimeoutField, g);
-        g.gridx = 2; g.weightx = 0; g.fill = GridBagConstraints.NONE;
+        g.gridx = 2;
         p.add(new JLabel("ACK Pattern (hex):"), g);
-        g.gridx = 3; g.weightx = 1; g.fill = GridBagConstraints.HORIZONTAL;
+        g.gridx = 3;
         ackPatternField = new JTextField("06", 8);
         p.add(ackPatternField, g);
 
         return p;
-    }
-
-    private void refreshPortList() {
-        portBox.removeAllItems();
-        portBox.addItem("");
-        String[] commonPorts = {"COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
-                "/dev/ttyS0", "/dev/ttyS1", "/dev/ttyS2", "/dev/ttyS3",
-                "/dev/ttyUSB0", "/dev/ttyUSB1", "/dev/ttyUSB2",
-                "/dev/ttyACM0", "/dev/ttyACM1"};
-        for (String port : commonPorts) {
-            portBox.addItem(port);
-        }
     }
 
     @Override
@@ -439,130 +390,99 @@ public class SerialConnectorSettingsPanel extends ConnectorSettingsPanel impleme
         if (e.getSource() == refreshPortsBtn) {
             refreshPortList();
         }
-        if (e.getSource() == transmissionModeBox) {
-            updateTransmissionUI();
-        }
     }
 
-    private void updateTransmissionUI() {
-        String mode = (String) transmissionModeBox.getSelectedItem();
-        boolean isBasic = "BASIC".equals(mode);
-        messageDelimiterField.setEnabled(isBasic);
+    private void refreshPortList() {
+        portBox.removeAllItems();
+        for (int i = 1; i <= 20; i++) {
+            portBox.addItem("COM" + i);
+        }
+        for (int i = 1; i <= 10; i++) {
+            portBox.addItem("/dev/ttyUSB" + i);
+            portBox.addItem("/dev/ttyACM" + i);
+        }
     }
 
     @Override
     public ConnectorProperties getProperties() {
         if (isSender) {
-            SerialDispatcherProperties p = new SerialDispatcherProperties();
-            fillConfig(p.getPortConfig());
-            p.setTransmissionMode((String) transmissionModeBox.getSelectedItem());
-            p.setMessageDelimiter(messageDelimiterField.getText());
-            p.setWaitForAckAfterWrite(waitAckBox.isSelected());
-            try { p.setAckTimeout(Integer.parseInt(ackTimeoutField.getText())); } catch (Exception ignored) {}
-            try { p.setAckPattern(hexToBytes(ackPatternField.getText())); } catch (Exception ignored) {}
-            p.setKeepConnectionOpen(keepOpenBox.isSelected());
-            return p;
+            SerialDispatcherProperties props = new SerialDispatcherProperties();
+            fillPortConfig(props.getPortConfig());
+            props.setWaitForAckAfterWrite(waitAckBox.isSelected());
+            props.setAckTimeout(parseInt(ackTimeoutField.getText(), 1000));
+            props.setAckPattern(parseHex(ackPatternField.getText(), new byte[]{0x06}));
+            props.setKeepConnectionOpen(keepOpenBox.isSelected());
+            return props;
         } else {
-            SerialReceiverProperties p = new SerialReceiverProperties();
-            fillConfig(p.getPortConfig());
-            p.setTransmissionMode((String) transmissionModeBox.getSelectedItem());
-            p.setMessageDelimiter(messageDelimiterField.getText());
-            return p;
+            SerialReceiverProperties props = new SerialReceiverProperties();
+            fillPortConfig(props.getPortConfig());
+            return props;
         }
-    }
-
-    private void fillConfig(SerialPortConfig c) {
-        c.setPortName(portBox.getSelectedItem() != null ? portBox.getSelectedItem().toString() : "");
-        c.setAutoDetectPort(autoDetectPortBox.isSelected());
-        try { c.setBaudRate(Integer.parseInt((String) baudBox.getSelectedItem())); } catch (Exception ignored) {}
-        c.setAutoDetectBaud(autoDetectBaudBox.isSelected());
-        try { c.setDataBits(Integer.parseInt((String) dataBitsBox.getSelectedItem())); } catch (Exception ignored) {}
-        c.setStopBits(stopBitsBox.getSelectedIndex() + 1);
-        c.setParity(parityBox.getSelectedIndex());
-        c.setFlowControl(flowBox.getSelectedIndex());
-        c.setCharsetEncoding((String) charsetBox.getSelectedItem());
-        c.setBinaryMode(binaryBox.isSelected());
-
-        try { c.setReadTimeout(Integer.parseInt(readTimeoutField.getText())); } catch (Exception ignored) {}
-        try { c.setWriteTimeout(Integer.parseInt(writeTimeoutField.getText())); } catch (Exception ignored) {}
-        try { c.setBufferSize(Integer.parseInt(bufferSizeField.getText())); } catch (Exception ignored) {}
-
-        c.setSetDTR(dtrBox.isSelected());
-        c.setSetRTS(rtsBox.isSelected());
-        c.setWaitForCTS(waitCtsBox.isSelected());
-        c.setWaitForDSR(waitDsrBox.isSelected());
-        c.setWaitForDCD(waitDcdBox.isSelected());
-        try { c.setSignalWaitTimeout(Integer.parseInt(signalTimeoutField.getText())); } catch (Exception ignored) {}
-
-        c.setSendBreakBeforeOpen(breakBox.isSelected());
-        try { c.setBreakDuration(Integer.parseInt(breakDurField.getText())); } catch (Exception ignored) {}
-        c.setFlushBuffersOnOpen(flushOpenBox.isSelected());
-        c.setFlushBuffersOnClose(flushCloseBox.isSelected());
-
-        c.setEnableHealthMonitor(healthBox.isSelected());
-        try { c.setHealthCheckInterval(Integer.parseInt(healthIntervalField.getText())); } catch (Exception ignored) {}
-        try { c.setMaxReconnectAttempts(Integer.parseInt(maxReconnectField.getText())); } catch (Exception ignored) {}
-        try { c.setReconnectDelay(Integer.parseInt(reconnectDelayField.getText())); } catch (Exception ignored) {}
-
-        c.setEnableProtocolAnalyzer(analyzerBox.isSelected());
-        try { c.setMaxProtocolLogEntries(Integer.parseInt(maxLogField.getText())); } catch (Exception ignored) {}
     }
 
     @Override
     public void setProperties(ConnectorProperties properties) {
-        if (isSender && properties instanceof SerialDispatcherProperties) {
-            SerialDispatcherProperties p = (SerialDispatcherProperties) properties;
-            loadConfig(p.getPortConfig());
-            transmissionModeBox.setSelectedItem(p.getTransmissionMode());
-            messageDelimiterField.setText(p.getMessageDelimiter());
-            waitAckBox.setSelected(p.isWaitForAckAfterWrite());
-            ackTimeoutField.setText(String.valueOf(p.getAckTimeout()));
-            ackPatternField.setText(bytesToHex(p.getAckPattern()));
-            keepOpenBox.setSelected(p.isKeepConnectionOpen());
-        } else if (!isSender && properties instanceof SerialReceiverProperties) {
-            SerialReceiverProperties p = (SerialReceiverProperties) properties;
-            loadConfig(p.getPortConfig());
-            transmissionModeBox.setSelectedItem(p.getTransmissionMode());
-            messageDelimiterField.setText(p.getMessageDelimiter());
+        SerialPortConfig config;
+        if (isSender) {
+            SerialDispatcherProperties props = (SerialDispatcherProperties) properties;
+            config = props.getPortConfig();
+            waitAckBox.setSelected(props.isWaitForAckAfterWrite());
+            ackTimeoutField.setText(String.valueOf(props.getAckTimeout()));
+            ackPatternField.setText(bytesToHex(props.getAckPattern()));
+            keepOpenBox.setSelected(props.isKeepConnectionOpen());
+        } else {
+            SerialReceiverProperties props = (SerialReceiverProperties) properties;
+            config = props.getPortConfig();
         }
-        updateTransmissionUI();
+        portBox.setSelectedItem(config.getPortName());
+        baudBox.setSelectedItem(String.valueOf(config.getBaudRate()));
+        dataBitsBox.setSelectedItem(String.valueOf(config.getDataBits()));
+        stopBitsBox.setSelectedItem(String.valueOf(config.getStopBits()));
+        parityBox.setSelectedIndex(config.getParity());
+        flowBox.setSelectedIndex(config.getFlowControl());
+        charsetBox.setSelectedItem(config.getCharset());
+        binaryBox.setSelected(config.isBinaryMode());
+        readTimeoutField.setText(String.valueOf(config.getReadTimeout()));
+        writeTimeoutField.setText(String.valueOf(config.getWriteTimeout()));
+        bufferSizeField.setText(String.valueOf(config.getBufferSize()));
+        dtrBox.setSelected(config.isSetDtr());
+        rtsBox.setSelected(config.isSetRts());
+        waitCtsBox.setSelected(config.isWaitCts());
+        waitDsrBox.setSelected(config.isWaitDsr());
+        waitDcdBox.setSelected(config.isWaitDcd());
+        signalTimeoutField.setText(String.valueOf(config.getSignalTimeout()));
+        breakBox.setSelected(config.isSendBreak());
+        breakDurField.setText(String.valueOf(config.getBreakDuration()));
+        flushOpenBox.setSelected(config.isFlushOnOpen());
+        flushCloseBox.setSelected(config.isFlushOnClose());
+        autoDetectPortBox.setSelected(config.isAutoDetectPort());
+        autoDetectBaudBox.setSelected(config.isAutoDetectBaud());
     }
 
-    private void loadConfig(SerialPortConfig c) {
-        portBox.setSelectedItem(c.getPortName());
-        autoDetectPortBox.setSelected(c.isAutoDetectPort());
-        baudBox.setSelectedItem(String.valueOf(c.getBaudRate()));
-        autoDetectBaudBox.setSelected(c.isAutoDetectBaud());
-        dataBitsBox.setSelectedItem(String.valueOf(c.getDataBits()));
-        stopBitsBox.setSelectedIndex(Math.max(0, c.getStopBits() - 1));
-        parityBox.setSelectedIndex(c.getParity());
-        flowBox.setSelectedIndex(c.getFlowControl());
-        charsetBox.setSelectedItem(c.getCharsetEncoding());
-        binaryBox.setSelected(c.isBinaryMode());
-
-        readTimeoutField.setText(String.valueOf(c.getReadTimeout()));
-        writeTimeoutField.setText(String.valueOf(c.getWriteTimeout()));
-        bufferSizeField.setText(String.valueOf(c.getBufferSize()));
-
-        dtrBox.setSelected(c.isSetDTR());
-        rtsBox.setSelected(c.isSetRTS());
-        waitCtsBox.setSelected(c.isWaitForCTS());
-        waitDsrBox.setSelected(c.isWaitForDSR());
-        waitDcdBox.setSelected(c.isWaitForDCD());
-        signalTimeoutField.setText(String.valueOf(c.getSignalWaitTimeout()));
-
-        breakBox.setSelected(c.isSendBreakBeforeOpen());
-        breakDurField.setText(String.valueOf(c.getBreakDuration()));
-        flushOpenBox.setSelected(c.isFlushBuffersOnOpen());
-        flushCloseBox.setSelected(c.isFlushBuffersOnClose());
-
-        healthBox.setSelected(c.isEnableHealthMonitor());
-        healthIntervalField.setText(String.valueOf(c.getHealthCheckInterval()));
-        maxReconnectField.setText(String.valueOf(c.getMaxReconnectAttempts()));
-        reconnectDelayField.setText(String.valueOf(c.getReconnectDelay()));
-
-        analyzerBox.setSelected(c.isEnableProtocolAnalyzer());
-        maxLogField.setText(String.valueOf(c.getMaxProtocolLogEntries()));
+    private void fillPortConfig(SerialPortConfig config) {
+        config.setPortName(String.valueOf(portBox.getSelectedItem()));
+        config.setBaudRate(parseInt(String.valueOf(baudBox.getSelectedItem()), 9600));
+        config.setDataBits(parseInt(String.valueOf(dataBitsBox.getSelectedItem()), 8));
+        config.setStopBits((int) parseDouble(String.valueOf(stopBitsBox.getSelectedItem()), 1));
+        config.setParity(parityBox.getSelectedIndex());
+        config.setFlowControl(flowBox.getSelectedIndex());
+        config.setCharset(String.valueOf(charsetBox.getSelectedItem()));
+        config.setBinaryMode(binaryBox.isSelected());
+        config.setReadTimeout(parseInt(readTimeoutField.getText(), 1000));
+        config.setWriteTimeout(parseInt(writeTimeoutField.getText(), 1000));
+        config.setBufferSize(parseInt(bufferSizeField.getText(), 4096));
+        config.setSetDtr(dtrBox.isSelected());
+        config.setSetRts(rtsBox.isSelected());
+        config.setWaitCts(waitCtsBox.isSelected());
+        config.setWaitDsr(waitDsrBox.isSelected());
+        config.setWaitDcd(waitDcdBox.isSelected());
+        config.setSignalTimeout(parseInt(signalTimeoutField.getText(), 1000));
+        config.setSendBreak(breakBox.isSelected());
+        config.setBreakDuration(parseInt(breakDurField.getText(), 100));
+        config.setFlushOnOpen(flushOpenBox.isSelected());
+        config.setFlushOnClose(flushCloseBox.isSelected());
+        config.setAutoDetectPort(autoDetectPortBox.isSelected());
+        config.setAutoDetectBaud(autoDetectBaudBox.isSelected());
     }
 
     @Override
@@ -572,70 +492,93 @@ public class SerialConnectorSettingsPanel extends ConnectorSettingsPanel impleme
 
     @Override
     public boolean checkProperties(ConnectorProperties properties, boolean highlight) {
-        boolean valid = true;
-        SerialPortConfig c;
+        SerialPortConfig config;
         if (isSender) {
-            c = ((SerialDispatcherProperties) properties).getPortConfig();
+            config = ((SerialDispatcherProperties) properties).getPortConfig();
         } else {
-            c = ((SerialReceiverProperties) properties).getPortConfig();
+            config = ((SerialReceiverProperties) properties).getPortConfig();
         }
 
-        if (c.getPortName() == null || c.getPortName().trim().isEmpty()) {
+        boolean valid = true;
+        if (config.getPortName() == null || config.getPortName().trim().isEmpty()) {
             valid = false;
             if (highlight) portBox.setBackground(Color.PINK);
         } else {
             if (highlight) portBox.setBackground(Color.WHITE);
         }
-
-        if (c.getBaudRate() <= 0) {
+        if (config.getBaudRate() <= 0) {
             valid = false;
             if (highlight) baudBox.setBackground(Color.PINK);
         } else {
             if (highlight) baudBox.setBackground(Color.WHITE);
         }
-
-        if (c.getDataBits() < 5 || c.getDataBits() > 8) valid = false;
-        if (c.getReadTimeout() < 0 || c.getWriteTimeout() < 0) valid = false;
-        if (c.getHealthCheckInterval() < 1000) valid = false;
-
+        if (config.getDataBits() < 5 || config.getDataBits() > 8) {
+            valid = false;
+        }
+        if (config.getReadTimeout() < 0 || config.getWriteTimeout() < 0) {
+            valid = false;
+        }
         if (isSender) {
             SerialDispatcherProperties dp = (SerialDispatcherProperties) properties;
-            if (dp.isWaitForAckAfterWrite()) {
-                try {
-                    hexToBytes(ackPatternField.getText());
-                } catch (Exception e) {
-                    valid = false;
-                    if (highlight) ackPatternField.setBackground(Color.PINK);
-                }
+            if (dp.isWaitForAckAfterWrite() && (dp.getAckPattern() == null || dp.getAckPattern().length == 0)) {
+                valid = false;
             }
         }
-
         return valid;
     }
 
     @Override
     public void resetInvalidProperties() {
-        portBox.setBackground(Color.WHITE);
-        baudBox.setBackground(Color.WHITE);
-        ackPatternField.setBackground(Color.WHITE);
+        // Clear pink highlights from all fields
+        portBox.setBackground(java.awt.Color.WHITE);
+        baudBox.setBackground(java.awt.Color.WHITE);
+        dataBitsBox.setBackground(java.awt.Color.WHITE);
+        stopBitsBox.setBackground(java.awt.Color.WHITE);
+        parityBox.setBackground(java.awt.Color.WHITE);
+        flowBox.setBackground(java.awt.Color.WHITE);
+        charsetBox.setBackground(java.awt.Color.WHITE);
+        readTimeoutField.setBackground(java.awt.Color.WHITE);
+        writeTimeoutField.setBackground(java.awt.Color.WHITE);
+        bufferSizeField.setBackground(java.awt.Color.WHITE);
+        signalTimeoutField.setBackground(java.awt.Color.WHITE);
+        breakDurField.setBackground(java.awt.Color.WHITE);
+        healthIntervalField.setBackground(java.awt.Color.WHITE);
+        maxReconnectField.setBackground(java.awt.Color.WHITE);
+        reconnectDelayField.setBackground(java.awt.Color.WHITE);
+        maxLogField.setBackground(java.awt.Color.WHITE);
+        if (isSender) {
+            ackTimeoutField.setBackground(java.awt.Color.WHITE);
+            ackPatternField.setBackground(java.awt.Color.WHITE);
+        }
     }
 
-    private byte[] hexToBytes(String hex) {
-        String h = hex.replaceAll("\\s", "");
-        int len = h.length();
-        if (len % 2 != 0) throw new IllegalArgumentException("Hex string must have even length");
-        byte[] data = new byte[len / 2];
-        for (int i = 0; i < len; i += 2) {
-            data[i / 2] = (byte) ((Character.digit(h.charAt(i), 16) << 4)
-                    + Character.digit(h.charAt(i + 1), 16));
-        }
-        return data;
+    private int parseInt(String s, int def) {
+        try { return Integer.parseInt(s); } catch (Exception e) { return def; }
+    }
+
+    private double parseDouble(String s, double def) {
+        try { return Double.parseDouble(s); } catch (Exception e) { return def; }
+    }
+
+    private byte[] parseHex(String s, byte[] def) {
+        if (s == null || s.trim().isEmpty()) return def;
+        try {
+            int len = s.length();
+            byte[] data = new byte[len / 2];
+            for (int i = 0; i < len; i += 2) {
+                data[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4)
+                                     + Character.digit(s.charAt(i + 1), 16));
+            }
+            return data;
+        } catch (Exception e) { return def; }
     }
 
     private String bytesToHex(byte[] bytes) {
         if (bytes == null) return "";
         StringBuilder sb = new StringBuilder();
-        for (byte b : bytes) sb.append(String.format("%02X", b & 0xFF));
+        for (byte b : bytes) {
+            sb.append(String.format("%02x", b));
+        }
         return sb.toString();
     }
 }

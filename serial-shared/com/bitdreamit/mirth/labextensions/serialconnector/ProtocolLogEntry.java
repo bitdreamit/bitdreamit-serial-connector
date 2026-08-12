@@ -28,10 +28,10 @@ public class ProtocolLogEntry implements Serializable {
     @Override
     public String toString() {
         return "ProtocolLogEntry{" +
-                "timestamp=" + timestamp +
-                ", direction=" + direction +
-                ", data=" + Arrays.toString(data) +
-                ", description=\"" + description + "\"" +
-                '}';
+               "timestamp=" + timestamp +
+               ", direction=" + direction +
+               ", data=" + Arrays.toString(data) +
+               ", description=\"" + description + "\"" +
+               '}';
     }
 }

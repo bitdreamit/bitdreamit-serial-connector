@@ -1,225 +1,193 @@
 package com.bitdreamit.mirth.labextensions.serialconnector;
 
 import com.fazecast.jSerialComm.SerialPort;
+import com.mirth.connect.donkey.model.event.ConnectionStatusEventType;
+import com.mirth.connect.donkey.model.event.ErrorEventType;
 import com.mirth.connect.donkey.model.message.RawMessage;
 import com.mirth.connect.donkey.server.channel.DispatchResult;
 import com.mirth.connect.donkey.server.channel.SourceConnector;
+import com.mirth.connect.donkey.server.event.ConnectionStatusEvent;
+import com.mirth.connect.donkey.server.event.ErrorEvent;
+import com.mirth.connect.server.controllers.ControllerFactory;
+import com.mirth.connect.server.controllers.EventController;
 import org.apache.log4j.Logger;
 
-import java.nio.charset.Charset;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
-/**
- * Universal Serial Source Connector — Transport layer only.
- * Works with ANY Mirth DataType (HL7, ASTM, Delimited, XML, etc.).
- * Transmission modes: BASIC | MLLP | ASTM_E1381
- */
 public class SerialSourceConnector extends SourceConnector {
     private static final Logger logger = Logger.getLogger(SerialSourceConnector.class);
+    private EventController eventController = ControllerFactory.getFactory().createEventController();
 
-    // ASTM / MLLP control characters
-    private static final byte ENQ = 0x05;
-    private static final byte ACK = 0x06;
-    private static final byte NAK = 0x15;
-    private static final byte EOT = 0x04;
-    private static final byte STX = 0x02;
-    private static final byte ETX = 0x03;
-    private static final byte ETB = 0x17;
-    private static final byte CR  = 0x0D;
-    private static final byte LF  = 0x0A;
-    private static final byte VT  = 0x0B;
-    private static final byte FS  = 0x1C;
-
-    private final SerialPortManager portManager = SerialPortManager.getInstance();
-    private final AtomicBoolean running = new AtomicBoolean(false);
-    private final AtomicReference<Thread> readerThreadRef = new AtomicReference<>();
-
+    private SerialReceiverProperties connectorProperties;
     private SerialPort serialPort;
-    private SerialPortConfig config;
-    private SerialReceiverProperties props;
-    private String portKey;
-    private Thread healthThread;
-    private SerialStatistics stats;
-    private Charset charset;
-    private SerialFrameAssembler frameAssembler;
+    private AtomicBoolean running = new AtomicBoolean(false);
+    private AtomicBoolean connected = new AtomicBoolean(false);
+    private AtomicReference<Thread> readerThread = new AtomicReference<>();
+    private AtomicReference<Thread> healthThread = new AtomicReference<>();
 
     @Override
-    public void onDeploy() {}
+    public void onDeploy() {
+        this.connectorProperties = (SerialReceiverProperties) getConnectorProperties();
+    }
 
     @Override
-    public void onUndeploy() {}
+    public void onUndeploy() {
+    }
 
     @Override
     public void onStart() {
-        props = (SerialReceiverProperties) getConnectorProperties();
-        config = props.getPortConfig();
-        portKey = getChannelId() + "@" + config.getPortName();
-        charset = Charset.forName(config.getCharsetEncoding());
-        frameAssembler = new SerialFrameAssembler(
-            props.getTransmissionMode(),
-            props.getMessageDelimiter(),
-            config.getCharsetEncoding()
-        );
-
+        running.set(true);
         try {
+            openPort();
             startReader();
-            if (config.isEnableHealthMonitor()) {
-                healthThread = new Thread(this::healthLoop, "BitDreamIT-SerialHealth-" + portKey);
-                healthThread.start();
-            }
-            logger.info("Serial source started on " + portKey + " mode=" + props.getTransmissionMode());
+            startHealthMonitor();
         } catch (Exception e) {
-            logger.error("Failed to start serial source on " + portKey, e);
+            running.set(false);
             throw new RuntimeException("Failed to start serial source: " + e.getMessage(), e);
         }
     }
 
-    private synchronized void startReader() throws Exception {
-        if (readerThreadRef.get() != null && readerThreadRef.get().isAlive()) {
-            return;
+    @Override
+    public void onStop() {
+        running.set(false);
+        stopReader();
+        stopHealthMonitor();
+        closePort();
+    }
+
+    @Override
+    public void onHalt() {
+        onStop();
+    }
+
+    private void openPort() throws Exception {
+        serialPort = SerialPortManager.getOrOpenPort(connectorProperties.getPortConfig());
+        connected.set(true);
+        eventController.dispatchEvent(new ConnectionStatusEvent(
+                getChannelId(), getMetaDataId(), getConnectorProperties().getName(), ConnectionStatusEventType.CONNECTED));
+        logger.info("Serial source connected on " + connectorProperties.getPortConfig().getPortName());
+    }
+
+    private void closePort() {
+        if (serialPort != null) {
+            SerialPortManager.releasePort(serialPort.getSystemPortName(), true);
+            serialPort = null;
         }
-        serialPort = portManager.getOrOpenPort(config, getChannelId());
-        stats = portManager.getStatistics(portKey);
-        running.set(true);
-        Thread t = new Thread(this::readLoop, "BitDreamIT-SerialReader-" + portKey);
-        readerThreadRef.set(t);
+        connected.set(false);
+        eventController.dispatchEvent(new ConnectionStatusEvent(
+                getChannelId(), getMetaDataId(), getConnectorProperties().getName(), ConnectionStatusEventType.DISCONNECTED));
+    }
+
+    private void startReader() {
+        Thread t = new Thread(this::readLoop, "SerialReader-" + getChannelId());
+        t.setDaemon(true);
+        readerThread.set(t);
         t.start();
-        logger.info("Reader thread started for " + portKey);
+    }
+
+    private void stopReader() {
+        Thread t = readerThread.getAndSet(null);
+        if (t != null) {
+            t.interrupt();
+            try { t.join(2000); } catch (InterruptedException ignored) {}
+        }
+    }
+
+    private void startHealthMonitor() {
+        if (!connectorProperties.getPortConfig().isAutoDetectPort()) {
+            Thread t = new Thread(this::healthLoop, "SerialHealth-" + getChannelId());
+            t.setDaemon(true);
+            healthThread.set(t);
+            t.start();
+        }
+    }
+
+    private void stopHealthMonitor() {
+        Thread t = healthThread.getAndSet(null);
+        if (t != null) {
+            t.interrupt();
+            try { t.join(2000); } catch (InterruptedException ignored) {}
+        }
     }
 
     private void readLoop() {
+        SerialPortConfig config = connectorProperties.getPortConfig();
         byte[] buffer = new byte[config.getBufferSize()];
 
         while (running.get()) {
-            SerialPort localPort = serialPort;
-            if (localPort == null || !localPort.isOpen()) {
-                try { Thread.sleep(500); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); break; }
-                continue;
-            }
-
             try {
-                int len = localPort.readBytes(buffer, buffer.length);
-                if (len > 0) {
-                    byte[] chunk = new byte[len];
-                    System.arraycopy(buffer, 0, chunk, 0, len);
-
-                    if (stats != null) stats.recordRead(len);
-                    if (config.isEnableProtocolAnalyzer()) {
-                        portManager.logProtocol(portKey, ProtocolLogEntry.Direction.IN, chunk,
-                                "Read " + len + " bytes", config.getMaxProtocolLogEntries());
-                    }
-
-                    List<SerialFrameAssembler.Frame> frames = frameAssembler.process(chunk);
-                    for (SerialFrameAssembler.Frame frame : frames) {
-                        handleFrame(frame, localPort);
-                    }
+                if (serialPort == null || !serialPort.isOpen()) {
+                    Thread.sleep(100);
+                    continue;
                 }
+
+                int bytesRead = serialPort.readBytes(buffer, buffer.length);
+                if (bytesRead > 0) {
+                    byte[] data = new byte[bytesRead];
+                    System.arraycopy(buffer, 0, data, 0, bytesRead);
+
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("Serial read " + bytesRead + " bytes from " + config.getPortName());
+                    }
+
+                    String payload;
+                    if (config.isBinaryMode()) {
+                        payload = java.util.Base64.getEncoder().encodeToString(data);
+                    } else {
+                        payload = new String(data, config.getCharset());
+                    }
+
+                    dispatchRawMessage(new RawMessage(payload));
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
             } catch (Exception e) {
-                if (running.get()) {
-                    if (stats != null) stats.recordError();
-                    logger.error("Serial read error on " + portKey, e);
-                }
+                logger.error("Serial read error on " + config.getPortName(), e);
+                eventController.dispatchEvent(new ErrorEvent(
+                        getChannelId(), getMetaDataId(), null, ErrorEventType.SOURCE_CONNECTOR,
+                        getConnectorProperties().getName(), "Serial read error", e.getMessage(), e));
+                connected.set(false);
             }
         }
-        logger.info("Serial read loop exited for " + portKey);
-    }
-
-    private void handleFrame(SerialFrameAssembler.Frame frame, SerialPort port) throws Exception {
-        String mode = props.getTransmissionMode();
-
-        if (frame.type == SerialFrameAssembler.Frame.Type.CONTROL) {
-            // ASTM E1381: ENQ -> ACK
-            if ("ASTM_E1381".equals(mode) && frame.bytes.length == 1 && frame.bytes[0] == ENQ) {
-                port.writeBytes(new byte[]{ACK}, 1);
-                if (config.isEnableProtocolAnalyzer()) {
-                    portManager.logProtocol(portKey, ProtocolLogEntry.Direction.OUT, new byte[]{ACK},
-                            "ASTM ACK -> ENQ", config.getMaxProtocolLogEntries());
-                }
-                logger.debug("Sent ACK in response to ENQ on " + portKey);
-            }
-            return;
-        }
-
-        // DATA frame
-        String payload;
-        if ("ASTM_E1381".equals(mode)) {
-            // Send ACK for each ASTM data frame
-            port.writeBytes(new byte[]{ACK}, 1);
-            if (config.isEnableProtocolAnalyzer()) {
-                portManager.logProtocol(portKey, ProtocolLogEntry.Direction.OUT, new byte[]{ACK},
-                        "ASTM ACK -> DATA", config.getMaxProtocolLogEntries());
-            }
-            payload = extractASTMPayload(frame.bytes, charset);
-        } else if ("MLLP".equals(mode)) {
-            payload = extractMLLPPayload(frame.bytes, charset);
-        } else {
-            // BASIC mode
-            payload = config.isBinaryMode() ? bytesToHex(frame.bytes) : new String(frame.bytes, charset);
-        }
-
-        if (payload != null && !payload.isEmpty()) {
-            dispatchRawMessage(new RawMessage(payload));
-        }
-    }
-
-    private String extractASTMPayload(byte[] frame, Charset charset) {
-        if (frame == null || frame.length < 7) return "";
-        // frame: STX [seq] payload [ETX|ETB] CHK1 CHK2 CR LF
-        int end = frame.length - 5; // before checksum
-        if (end < 2) return "";
-        int start = 2; // after STX and sequence number
-        if (start >= end) return "";
-        return new String(frame, start, end - start, charset);
-    }
-
-    private String extractMLLPPayload(byte[] frame, Charset charset) {
-        if (frame == null || frame.length < 3) return "";
-        int start = 0;
-        if (frame[0] == VT) start = 1;
-        int end = frame.length;
-        if (end >= 2 && frame[end - 2] == FS && frame[end - 1] == CR) end = end - 2;
-        else if (end >= 1 && frame[end - 1] == FS) end = end - 1;
-        if (start >= end) return "";
-        return new String(frame, start, end - start, charset);
-    }
-
-    private String bytesToHex(byte[] bytes) {
-        StringBuilder sb = new StringBuilder();
-        for (byte b : bytes) sb.append(String.format("%02X", b & 0xFF));
-        return sb.toString();
     }
 
     private void healthLoop() {
-        int attempts = 0;
+        SerialPortConfig config = connectorProperties.getPortConfig();
+        int maxReconnect = 10;
+        int reconnectDelay = 5000;
+        int reconnectAttempts = 0;
+
         while (running.get()) {
             try {
-                Thread.sleep(config.getHealthCheckInterval());
-                SerialPort current = serialPort;
-                if (current == null || !current.isOpen()) {
-                    if (stats != null) stats.recordError();
-                    logger.warn("Serial port " + portKey + " disconnected. Reconnecting...");
+                Thread.sleep(reconnectDelay);
+                if (!running.get()) break;
 
-                    if (attempts < config.getMaxReconnectAttempts()) {
-                        Thread.sleep(config.getReconnectDelay());
+                if (serialPort == null || !serialPort.isOpen()) {
+                    if (reconnectAttempts < maxReconnect) {
+                        logger.warn("Serial port disconnected, reconnecting... (" + (reconnectAttempts + 1) + "/" + maxReconnect + ")");
                         try {
-                            portManager.closePort(portKey);
+                            closePort();
+                            openPort();
                             startReader();
-                            attempts = 0;
-                            logger.info("Serial port " + portKey + " reconnected and reader restarted");
-                        } catch (Exception re) {
-                            attempts++;
-                            logger.error("Reconnect attempt " + attempts + " failed for " + portKey, re);
+                            reconnectAttempts = 0;
+                            logger.info("Serial source reconnected on " + config.getPortName());
+                        } catch (Exception e) {
+                            reconnectAttempts++;
+                            logger.error("Reconnect failed: " + e.getMessage());
                         }
                     } else {
-                        logger.error("Max reconnect attempts reached for " + portKey);
-                        running.set(false);
+                        logger.error("Max reconnects reached. Stopping.");
+                        eventController.dispatchEvent(new ErrorEvent(
+                                getChannelId(), getMetaDataId(), null, ErrorEventType.SOURCE_CONNECTOR,
+                                getConnectorProperties().getName(), "Max reconnects reached", "Serial source stopped", null));
+                        break;
                     }
                 } else {
-                    attempts = 0;
+                    reconnectAttempts = 0;
                 }
-            } catch (InterruptedException ie) {
+            } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
             }
@@ -227,27 +195,6 @@ public class SerialSourceConnector extends SourceConnector {
     }
 
     @Override
-    public void onStop() {
-        running.set(false);
-        Thread rt = readerThreadRef.getAndSet(null);
-        if (rt != null) {
-            try { rt.join(2000); } catch (InterruptedException ignored) {}
-        }
-        if (healthThread != null) {
-            try { healthThread.join(1000); } catch (InterruptedException ignored) {}
-        }
-        if (!props.isKeepConnectionOpen()) {
-            portManager.closePort(portKey);
-        }
-        logger.info("Serial source stopped on " + portKey);
+    public void handleRecoveredResponse(DispatchResult dispatchResult) {
     }
-
-    @Override
-    public void onHalt() {
-        running.set(false);
-        portManager.closePort(portKey);
-    }
-
-    @Override
-    public void handleRecoveredResponse(DispatchResult dispatchResult) {}
 }
