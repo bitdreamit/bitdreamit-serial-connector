@@ -1,8 +1,11 @@
 package com.bitdreamit.mirth.labextensions.serialconnector;
 
+import com.thoughtworks.xstream.annotations.XStreamAlias;
+
 import java.io.Serializable;
 import java.util.Objects;
 
+@XStreamAlias("serialPortConfig")
 public class SerialPortConfig implements Serializable, Cloneable {
     private static final long serialVersionUID = 1L;
 
