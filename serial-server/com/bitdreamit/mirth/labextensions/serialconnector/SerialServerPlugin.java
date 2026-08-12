@@ -18,13 +18,9 @@ public class SerialServerPlugin implements ServerPlugin {
     public void start() {
         try {
             XStream xstream = ObjectXMLSerializer.getInstance().getXStream();
-            if (xstream != null) {
-                xstream.addPermission(new WildcardTypePermission(
-                        new String[]{"com.bitdreamit.mirth.labextensions.serialconnector.**"}));
-                logger.info("Serial Connector XStream permissions registered on server.");
-            } else {
-                logger.error("ObjectXMLSerializer returned null XStream.");
-            }
+            xstream.addPermission(new WildcardTypePermission(
+                    new String[]{"com.bitdreamit.mirth.labextensions.serialconnector.**"}));
+            logger.info("Serial Connector XStream permissions registered on server.");
         } catch (Exception e) {
             logger.error("Failed to register Serial Connector XStream permissions", e);
         }
