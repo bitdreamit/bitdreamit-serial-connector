@@ -43,9 +43,16 @@ public class SerialPortConfig implements Serializable, Cloneable {
     // Transmission Mode (like TCP)
     private String transmissionMode = "RAW";
     private String lineDelimiter = "\\r\\n";
-    private String frameStartBytes = "";
-    private String frameEndBytes = "";
 
+    // Custom framing bytes (configurable for ALL modes)
+    private String startOfMessageBytes = "";
+    private String endOfMessageBytes = "";
+    private boolean useMLLPv2 = false;
+    private String commitAckBytes = "06";
+    private String commitNakBytes = "15";
+    private int maxRetryCount = 2;
+
+    // Getters and Setters
     public String getPortName() { return portName; }
     public void setPortName(String portName) { this.portName = portName; }
     public int getBaudRate() { return baudRate; }
@@ -110,10 +117,19 @@ public class SerialPortConfig implements Serializable, Cloneable {
     public void setTransmissionMode(String transmissionMode) { this.transmissionMode = transmissionMode; }
     public String getLineDelimiter() { return lineDelimiter; }
     public void setLineDelimiter(String lineDelimiter) { this.lineDelimiter = lineDelimiter; }
-    public String getFrameStartBytes() { return frameStartBytes; }
-    public void setFrameStartBytes(String frameStartBytes) { this.frameStartBytes = frameStartBytes; }
-    public String getFrameEndBytes() { return frameEndBytes; }
-    public void setFrameEndBytes(String frameEndBytes) { this.frameEndBytes = frameEndBytes; }
+
+    public String getStartOfMessageBytes() { return startOfMessageBytes; }
+    public void setStartOfMessageBytes(String startOfMessageBytes) { this.startOfMessageBytes = startOfMessageBytes; }
+    public String getEndOfMessageBytes() { return endOfMessageBytes; }
+    public void setEndOfMessageBytes(String endOfMessageBytes) { this.endOfMessageBytes = endOfMessageBytes; }
+    public boolean isUseMLLPv2() { return useMLLPv2; }
+    public void setUseMLLPv2(boolean useMLLPv2) { this.useMLLPv2 = useMLLPv2; }
+    public String getCommitAckBytes() { return commitAckBytes; }
+    public void setCommitAckBytes(String commitAckBytes) { this.commitAckBytes = commitAckBytes; }
+    public String getCommitNakBytes() { return commitNakBytes; }
+    public void setCommitNakBytes(String commitNakBytes) { this.commitNakBytes = commitNakBytes; }
+    public int getMaxRetryCount() { return maxRetryCount; }
+    public void setMaxRetryCount(int maxRetryCount) { this.maxRetryCount = maxRetryCount; }
 
     public int[] getAutoBaudRates() {
         return new int[]{9600, 19200, 38400, 57600, 115200};
@@ -144,11 +160,14 @@ public class SerialPortConfig implements Serializable, Cloneable {
                 && healthMonitorEnabled == that.healthMonitorEnabled && healthInterval == that.healthInterval
                 && maxReconnects == that.maxReconnects && reconnectDelay == that.reconnectDelay
                 && protocolLoggingEnabled == that.protocolLoggingEnabled && maxLogEntries == that.maxLogEntries
+                && useMLLPv2 == that.useMLLPv2 && maxRetryCount == that.maxRetryCount
                 && Objects.equals(portName, that.portName) && Objects.equals(charset, that.charset)
                 && Objects.equals(transmissionMode, that.transmissionMode)
                 && Objects.equals(lineDelimiter, that.lineDelimiter)
-                && Objects.equals(frameStartBytes, that.frameStartBytes)
-                && Objects.equals(frameEndBytes, that.frameEndBytes);
+                && Objects.equals(startOfMessageBytes, that.startOfMessageBytes)
+                && Objects.equals(endOfMessageBytes, that.endOfMessageBytes)
+                && Objects.equals(commitAckBytes, that.commitAckBytes)
+                && Objects.equals(commitNakBytes, that.commitNakBytes);
     }
 
     @Override
@@ -158,6 +177,7 @@ public class SerialPortConfig implements Serializable, Cloneable {
                 waitDcd, signalTimeout, sendBreak, breakDuration, flushOnOpen, flushOnClose,
                 autoDetectPort, autoDetectBaud, healthMonitorEnabled, healthInterval, maxReconnects,
                 reconnectDelay, protocolLoggingEnabled, maxLogEntries, transmissionMode,
-                lineDelimiter, frameStartBytes, frameEndBytes);
+                lineDelimiter, startOfMessageBytes, endOfMessageBytes, useMLLPv2,
+                commitAckBytes, commitNakBytes, maxRetryCount);
     }
 }

@@ -7,6 +7,9 @@ import com.thoughtworks.xstream.XStream;
 import com.thoughtworks.xstream.security.WildcardTypePermission;
 import org.apache.log4j.Logger;
 
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+
 public class SerialSourceSettingsPanel extends ConnectorSettingsPanel {
     private static final Logger logger = Logger.getLogger(SerialSourceSettingsPanel.class);
     private final SerialConnectorSettingsPanel panel;
@@ -26,8 +29,16 @@ public class SerialSourceSettingsPanel extends ConnectorSettingsPanel {
 
     public SerialSourceSettingsPanel() {
         panel = new SerialConnectorSettingsPanel(false);
-        setLayout(new java.awt.BorderLayout());
-        add(panel, java.awt.BorderLayout.CENTER);
+        // Anchor to top-left (NORTHWEST) so panel stays left-aligned, not centered
+        setLayout(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.anchor = GridBagConstraints.NORTHWEST;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.weightx = 1;
+        gbc.weighty = 1;
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        add(panel, gbc);
     }
 
     @Override

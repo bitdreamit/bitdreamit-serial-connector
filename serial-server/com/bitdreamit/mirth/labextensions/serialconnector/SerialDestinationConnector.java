@@ -143,37 +143,49 @@ public class SerialDestinationConnector extends DestinationConnector {
                 System.arraycopy(delimBytes, 0, lineResult, payloadBytes.length, delimBytes.length);
                 return lineResult;
 
-            case "FRAME":
-                byte[] start = parseHexString(config.getFrameStartBytes());
-                byte[] end = parseHexString(config.getFrameEndBytes());
+            case "FRAME": {
+                byte[] start = parseHexString(config.getStartOfMessageBytes());
+                byte[] end = parseHexString(config.getEndOfMessageBytes());
                 byte[] frameResult = new byte[start.length + payloadBytes.length + end.length];
                 System.arraycopy(start, 0, frameResult, 0, start.length);
                 System.arraycopy(payloadBytes, 0, frameResult, start.length, payloadBytes.length);
                 System.arraycopy(end, 0, frameResult, start.length + payloadBytes.length, end.length);
                 return frameResult;
+            }
 
-            case "MLLP":
-                byte[] mllpResult = new byte[1 + payloadBytes.length + 2];
-                mllpResult[0] = 0x0B;
-                System.arraycopy(payloadBytes, 0, mllpResult, 1, payloadBytes.length);
-                mllpResult[mllpResult.length - 2] = 0x1C;
-                mllpResult[mllpResult.length - 1] = 0x0D;
+            case "MLLP": {
+                byte[] start = parseHexString(config.getStartOfMessageBytes());
+                byte[] end = parseHexString(config.getEndOfMessageBytes());
+                if (start.length == 0) start = new byte[]{0x0B};
+                if (end.length == 0) end = new byte[]{0x1C, 0x0D};
+                byte[] mllpResult = new byte[start.length + payloadBytes.length + end.length];
+                System.arraycopy(start, 0, mllpResult, 0, start.length);
+                System.arraycopy(payloadBytes, 0, mllpResult, start.length, payloadBytes.length);
+                System.arraycopy(end, 0, mllpResult, start.length + payloadBytes.length, end.length);
                 return mllpResult;
+            }
 
-            case "ASTM":
+            case "ASTM": {
+                byte[] start = parseHexString(config.getStartOfMessageBytes());
+                byte[] end = parseHexString(config.getEndOfMessageBytes());
+                if (start.length == 0) start = new byte[]{0x02};
+                if (end.length == 0) end = new byte[]{0x03};
+
                 int sum = 0;
                 for (byte b : payloadBytes) sum = (sum + b) & 0xFF;
                 String chkStr = String.format("%02X", sum).substring(0, 2);
                 byte[] chkBytes = chkStr.getBytes(charset);
-                byte[] astmResult = new byte[1 + payloadBytes.length + 1 + 2 + 2];
-                astmResult[0] = 0x02;
-                System.arraycopy(payloadBytes, 0, astmResult, 1, payloadBytes.length);
-                astmResult[1 + payloadBytes.length] = 0x03;
-                astmResult[1 + payloadBytes.length + 1] = chkBytes[0];
-                astmResult[1 + payloadBytes.length + 2] = chkBytes[1];
-                astmResult[astmResult.length - 2] = 0x0D;
-                astmResult[astmResult.length - 1] = 0x0A;
+
+                byte[] crlf = new byte[]{0x0D, 0x0A};
+                byte[] astmResult = new byte[start.length + payloadBytes.length + end.length + chkBytes.length + crlf.length];
+                int pos = 0;
+                System.arraycopy(start, 0, astmResult, pos, start.length); pos += start.length;
+                System.arraycopy(payloadBytes, 0, astmResult, pos, payloadBytes.length); pos += payloadBytes.length;
+                System.arraycopy(end, 0, astmResult, pos, end.length); pos += end.length;
+                System.arraycopy(chkBytes, 0, astmResult, pos, chkBytes.length); pos += chkBytes.length;
+                System.arraycopy(crlf, 0, astmResult, pos, crlf.length);
                 return astmResult;
+            }
 
             default:
                 return payloadBytes;
@@ -187,7 +199,7 @@ public class SerialDestinationConnector extends DestinationConnector {
 
     private byte[] parseHexString(String hex) {
         if (hex == null || hex.trim().isEmpty()) return new byte[0];
-        String clean = hex.replaceAll("\\s", "");
+        String clean = hex.replaceAll("\\s", "").toUpperCase();
         if (clean.length() % 2 != 0) clean = "0" + clean;
         byte[] result = new byte[clean.length() / 2];
         for (int i = 0; i < clean.length(); i += 2) {

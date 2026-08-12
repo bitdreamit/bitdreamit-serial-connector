@@ -210,8 +210,8 @@ public class SerialSourceConnector extends SourceConnector {
 
     private void processFrameMode(byte[] data, SerialPortConfig config) {
         frameBuffer.write(data, 0, data.length);
-        byte[] start = parseHexString(config.getFrameStartBytes());
-        byte[] end = parseHexString(config.getFrameEndBytes());
+        byte[] start = parseHexString(config.getStartOfMessageBytes());
+        byte[] end = parseHexString(config.getEndOfMessageBytes());
 
         if (start.length == 0 || end.length == 0) {
             dispatchRaw(data, config);
@@ -244,21 +244,32 @@ public class SerialSourceConnector extends SourceConnector {
 
     private void processMllpMode(byte[] data, SerialPortConfig config) throws Exception {
         frameBuffer.write(data, 0, data.length);
+        byte[] start = parseHexString(config.getStartOfMessageBytes());
+        byte[] end = parseHexString(config.getEndOfMessageBytes());
+        if (start.length == 0) start = new byte[]{0x0B};
+        if (end.length == 0) end = new byte[]{0x1C, 0x0D};
+
         byte[] buffer = frameBuffer.toByteArray();
         int searchStart = 0;
 
         while (true) {
-            int startIdx = indexOfByte(buffer, (byte) 0x0B, searchStart);
+            int startIdx = indexOf(buffer, start, searchStart);
             if (startIdx < 0) break;
 
-            int payloadStart = startIdx + 1;
-            int endIdx = indexOfBytes(buffer, new byte[]{0x1C, 0x0D}, payloadStart);
+            int payloadStart = startIdx + start.length;
+            int endIdx = indexOf(buffer, end, payloadStart);
             if (endIdx < 0) break;
 
             byte[] payload = Arrays.copyOfRange(buffer, payloadStart, endIdx);
             dispatchRaw(payload, config);
 
-            searchStart = endIdx + 2;
+            // Send commit ACK if MLLPv2
+            if (config.isUseMLLPv2()) {
+                byte[] ack = parseHexString(config.getCommitAckBytes());
+                if (ack.length > 0) serialPort.writeBytes(ack, ack.length);
+            }
+
+            searchStart = endIdx + end.length;
         }
 
         if (searchStart > 0) {
@@ -270,30 +281,42 @@ public class SerialSourceConnector extends SourceConnector {
 
     private void processAstmMode(byte[] data, SerialPortConfig config) throws Exception {
         frameBuffer.write(data, 0, data.length);
+        byte[] start = parseHexString(config.getStartOfMessageBytes());
+        byte[] end = parseHexString(config.getEndOfMessageBytes());
+        byte[] ackBytes = parseHexString(config.getCommitAckBytes());
+        byte[] nakBytes = parseHexString(config.getCommitNakBytes());
+        if (start.length == 0) start = new byte[]{0x02};
+        if (end.length == 0) end = new byte[]{0x03};
+        if (ackBytes.length == 0) ackBytes = new byte[]{0x06};
+        if (nakBytes.length == 0) nakBytes = new byte[]{0x15};
+
         byte[] buffer = frameBuffer.toByteArray();
         int searchStart = 0;
 
         while (true) {
+            // Handle ENQ/ACK handshake
             int enqIdx = indexOfByte(buffer, (byte) 0x05, searchStart);
             if (enqIdx >= 0) {
-                serialPort.writeBytes(new byte[]{0x06}, 1);
+                serialPort.writeBytes(ackBytes, ackBytes.length);
                 searchStart = enqIdx + 1;
                 continue;
             }
 
-            int stxIdx = indexOfByte(buffer, (byte) 0x02, searchStart);
+            int stxIdx = indexOf(buffer, start, searchStart);
             if (stxIdx < 0) break;
 
-            int etxIdx = indexOfByte(buffer, (byte) 0x03, stxIdx + 1);
+            int payloadStart = stxIdx + start.length;
+            int etxIdx = indexOf(buffer, end, payloadStart);
             if (etxIdx < 0) break;
 
+            // Need at least 4 more bytes: CHK(2) + CR + LF
             if (etxIdx + 4 >= buffer.length) break;
 
-            byte[] payload = Arrays.copyOfRange(buffer, stxIdx + 1, etxIdx);
-            byte chk1 = buffer[etxIdx + 1];
-            byte chk2 = buffer[etxIdx + 2];
+            byte[] payload = Arrays.copyOfRange(buffer, payloadStart, etxIdx);
+            byte chk1 = buffer[etxIdx + end.length];
+            byte chk2 = buffer[etxIdx + end.length + 1];
 
-            if (buffer[etxIdx + 3] == 0x0D && buffer[etxIdx + 4] == 0x0A) {
+            if (buffer[etxIdx + end.length + 2] == 0x0D && buffer[etxIdx + end.length + 3] == 0x0A) {
                 int sum = 0;
                 for (byte b : payload) sum = (sum + b) & 0xFF;
                 String expectedChk = String.format("%02X", sum).substring(0, 2);
@@ -301,12 +324,13 @@ public class SerialSourceConnector extends SourceConnector {
 
                 if (expectedChk.equals(actualChk)) {
                     dispatchRaw(payload, config);
-                    serialPort.writeBytes(new byte[]{0x06}, 1);
+                    serialPort.writeBytes(ackBytes, ackBytes.length);
                 } else {
                     logger.warn("ASTM checksum mismatch on " + config.getPortName());
-                    serialPort.writeBytes(new byte[]{0x15}, 1);
+                    serialPort.writeBytes(nakBytes, nakBytes.length);
                 }
-                searchStart = etxIdx + 5;
+
+                searchStart = etxIdx + end.length + 4;
             } else {
                 searchStart = stxIdx + 1;
             }
@@ -334,7 +358,7 @@ public class SerialSourceConnector extends SourceConnector {
 
     private byte[] parseHexString(String hex) {
         if (hex == null || hex.trim().isEmpty()) return new byte[0];
-        String clean = hex.replaceAll("\\s", "");
+        String clean = hex.replaceAll("\\s", "").toUpperCase();
         if (clean.length() % 2 != 0) clean = "0" + clean;
         byte[] result = new byte[clean.length() / 2];
         for (int i = 0; i < clean.length(); i += 2) {
@@ -358,10 +382,6 @@ public class SerialSourceConnector extends SourceConnector {
             if (haystack[i] == needle) return i;
         }
         return -1;
-    }
-
-    private int indexOfBytes(byte[] haystack, byte[] needle, int fromIndex) {
-        return indexOf(haystack, needle, fromIndex);
     }
 
     private void healthLoop() {
