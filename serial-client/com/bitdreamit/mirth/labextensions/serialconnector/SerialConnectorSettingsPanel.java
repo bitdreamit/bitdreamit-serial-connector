@@ -42,21 +42,17 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
     private MirthCheckBox flushOpenBox;
     private MirthCheckBox flushCloseBox;
 
-    // Transmission
     private MirthComboBox transmissionModeBox;
     private JButton transmissionSettingsBtn;
 
-    // Health
     private MirthCheckBox healthBox;
     private JTextField healthIntervalField;
     private JTextField maxReconnectField;
     private JTextField reconnectDelayField;
 
-    // Analyzer
     private MirthCheckBox analyzerBox;
     private JTextField maxLogField;
 
-    // Destination
     private MirthCheckBox waitAckBox;
     private JTextField ackTimeoutField;
     private MirthCheckBox keepOpenBox;
@@ -78,7 +74,6 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
 
     private void initComponents() {
         setBackground(Color.WHITE);
-        // Use BoxLayout Y_AXIS so everything stacks top-left without centering
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
         setAlignmentX(Component.LEFT_ALIGNMENT);
 
@@ -448,7 +443,9 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         dialog.setVisible(true);
         if (dialog.isSaved()) {
             dialog.saveToConfig(config);
-            // Write back to properties
+            if (properties == null) {
+                properties = isSender ? new SerialDispatcherProperties() : new SerialReceiverProperties();
+            }
             if (isSender) {
                 ((SerialDispatcherProperties) properties).setPortConfig(config);
             } else {
@@ -458,13 +455,15 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
     }
 
     private SerialPortConfig getConfigFromFields() {
-        SerialPortConfig config = new SerialPortConfig();
         if (properties != null) {
-            config = isSender
-                    ? ((SerialDispatcherProperties) properties).getPortConfig().clone()
-                    : ((SerialReceiverProperties) properties).getPortConfig().clone();
+            SerialPortConfig existing = isSender
+                    ? ((SerialDispatcherProperties) properties).getPortConfig()
+                    : ((SerialReceiverProperties) properties).getPortConfig();
+            if (existing != null) {
+                return existing.clone();
+            }
         }
-        return config;
+        return new SerialPortConfig();
     }
 
     private void refreshPortList() {
@@ -498,22 +497,30 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
 
     public void setProperties(ConnectorProperties properties) {
         this.properties = properties;
-        SerialPortConfig config;
+        SerialPortConfig config = null;
         if (isSender) {
             SerialDispatcherProperties props = (SerialDispatcherProperties) properties;
-            config = props.getPortConfig();
-            waitAckBox.setSelected(props.isWaitForAckAfterWrite());
-            ackTimeoutField.setText(String.valueOf(props.getAckTimeout()));
-            ackPatternField.setText(bytesToHex(props.getAckPattern()));
-            keepOpenBox.setSelected(props.isKeepConnectionOpen());
+            if (props != null) {
+                config = props.getPortConfig();
+                waitAckBox.setSelected(props.isWaitForAckAfterWrite());
+                ackTimeoutField.setText(String.valueOf(props.getAckTimeout()));
+                ackPatternField.setText(bytesToHex(props.getAckPattern()));
+                keepOpenBox.setSelected(props.isKeepConnectionOpen());
+            }
         } else {
             SerialReceiverProperties props = (SerialReceiverProperties) properties;
-            config = props.getPortConfig();
+            if (props != null) {
+                config = props.getPortConfig();
+            }
         }
+        if (config == null) {
+            config = new SerialPortConfig();
+        }
+
         portBox.setSelectedItem(config.getPortName());
         baudBox.setSelectedItem(String.valueOf(config.getBaudRate()));
         dataBitsBox.setSelectedItem(String.valueOf(config.getDataBits()));
-        stopBitsBox.setSelectedItem(String.valueOf(config.getStopBits()));
+        stopBitsBox.setSelectedItem(mapStopBitsToString(config.getStopBits()));
         parityBox.setSelectedIndex(config.getParity());
         flowBox.setSelectedIndex(config.getFlowControl());
         charsetBox.setSelectedItem(config.getCharset());
@@ -548,7 +555,7 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         config.setPortName(String.valueOf(portBox.getSelectedItem()));
         config.setBaudRate(parseInt(String.valueOf(baudBox.getSelectedItem()), 9600));
         config.setDataBits(parseInt(String.valueOf(dataBitsBox.getSelectedItem()), 8));
-        config.setStopBits((int) parseDouble(String.valueOf(stopBitsBox.getSelectedItem()), 1));
+        config.setStopBits(mapStopBitsFromString(String.valueOf(stopBitsBox.getSelectedItem())));
         config.setParity(parityBox.getSelectedIndex());
         config.setFlowControl(flowBox.getSelectedIndex());
         config.setCharset(String.valueOf(charsetBox.getSelectedItem()));
@@ -579,16 +586,30 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         config.setMaxLogEntries(parseInt(maxLogField.getText(), 1000));
     }
 
+    // jSerialComm: ONE_STOP_BIT=1, ONE_POINT_FIVE_STOP_BITS=3, TWO_STOP_BITS=2
+    private int mapStopBitsFromString(String s) {
+        if ("1.5".equals(s)) return 3;
+        return (int) parseDouble(s, 1);
+    }
+
+    private String mapStopBitsToString(int stopBits) {
+        if (stopBits == 3) return "1.5";
+        return String.valueOf(stopBits);
+    }
+
     public ConnectorProperties getDefaults() {
         return isSender ? new SerialDispatcherProperties() : new SerialReceiverProperties();
     }
 
     public boolean checkProperties(ConnectorProperties properties, boolean highlight) {
-        SerialPortConfig config;
-        if (isSender) {
+        SerialPortConfig config = null;
+        if (isSender && properties instanceof SerialDispatcherProperties) {
             config = ((SerialDispatcherProperties) properties).getPortConfig();
-        } else {
+        } else if (!isSender && properties instanceof SerialReceiverProperties) {
             config = ((SerialReceiverProperties) properties).getPortConfig();
+        }
+        if (config == null) {
+            return false;
         }
 
         boolean valid = true;
@@ -606,7 +627,7 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         }
         if (config.getDataBits() < 5 || config.getDataBits() > 8) valid = false;
         if (config.getReadTimeout() < 0 || config.getWriteTimeout() < 0) valid = false;
-        if (isSender) {
+        if (isSender && properties instanceof SerialDispatcherProperties) {
             SerialDispatcherProperties dp = (SerialDispatcherProperties) properties;
             if (dp.isWaitForAckAfterWrite() && (dp.getAckPattern() == null || dp.getAckPattern().length == 0)) {
                 valid = false;
