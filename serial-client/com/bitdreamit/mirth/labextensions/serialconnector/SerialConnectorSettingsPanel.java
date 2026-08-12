@@ -11,15 +11,10 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
-/**
- * Pure Serial Transport Settings — No protocol awareness.
- * Protocol framing is handled by the channel's DataType plugin.
- */
 public class SerialConnectorSettingsPanel extends ConnectorSettingsPanel implements ActionListener {
 
     private boolean isSender;
 
-    // Basic
     private MirthComboBox portBox;
     private JButton refreshPortsBtn;
     private MirthCheckBox autoDetectPortBox;
@@ -32,12 +27,10 @@ public class SerialConnectorSettingsPanel extends ConnectorSettingsPanel impleme
     private MirthComboBox charsetBox;
     private MirthCheckBox binaryBox;
 
-    // Timeouts
     private JTextField readTimeoutField;
     private JTextField writeTimeoutField;
     private JTextField bufferSizeField;
 
-    // Signals
     private MirthCheckBox dtrBox;
     private MirthCheckBox rtsBox;
     private MirthCheckBox waitCtsBox;
@@ -45,23 +38,19 @@ public class SerialConnectorSettingsPanel extends ConnectorSettingsPanel impleme
     private MirthCheckBox waitDcdBox;
     private JTextField signalTimeoutField;
 
-    // Break & Flush
     private MirthCheckBox breakBox;
     private JTextField breakDurField;
     private MirthCheckBox flushOpenBox;
     private MirthCheckBox flushCloseBox;
 
-    // Health Monitor
     private MirthCheckBox healthBox;
     private JTextField healthIntervalField;
     private JTextField maxReconnectField;
     private JTextField reconnectDelayField;
 
-    // Protocol Analyzer
     private MirthCheckBox analyzerBox;
     private JTextField maxLogField;
 
-    // Destination extras
     private MirthCheckBox waitAckBox;
     private JTextField ackTimeoutField;
     private MirthCheckBox keepOpenBox;
@@ -457,6 +446,12 @@ public class SerialConnectorSettingsPanel extends ConnectorSettingsPanel impleme
         flushCloseBox.setSelected(config.isFlushOnClose());
         autoDetectPortBox.setSelected(config.isAutoDetectPort());
         autoDetectBaudBox.setSelected(config.isAutoDetectBaud());
+        healthBox.setSelected(config.isHealthMonitorEnabled());
+        healthIntervalField.setText(String.valueOf(config.getHealthInterval()));
+        maxReconnectField.setText(String.valueOf(config.getMaxReconnects()));
+        reconnectDelayField.setText(String.valueOf(config.getReconnectDelay()));
+        analyzerBox.setSelected(config.isProtocolLoggingEnabled());
+        maxLogField.setText(String.valueOf(config.getMaxLogEntries()));
     }
 
     private void fillPortConfig(SerialPortConfig config) {
@@ -483,6 +478,12 @@ public class SerialConnectorSettingsPanel extends ConnectorSettingsPanel impleme
         config.setFlushOnClose(flushCloseBox.isSelected());
         config.setAutoDetectPort(autoDetectPortBox.isSelected());
         config.setAutoDetectBaud(autoDetectBaudBox.isSelected());
+        config.setHealthMonitorEnabled(healthBox.isSelected());
+        config.setHealthInterval(parseInt(healthIntervalField.getText(), 5000));
+        config.setMaxReconnects(parseInt(maxReconnectField.getText(), 10));
+        config.setReconnectDelay(parseInt(reconnectDelayField.getText(), 5000));
+        config.setProtocolLoggingEnabled(analyzerBox.isSelected());
+        config.setMaxLogEntries(parseInt(maxLogField.getText(), 1000));
     }
 
     @Override
@@ -529,26 +530,25 @@ public class SerialConnectorSettingsPanel extends ConnectorSettingsPanel impleme
 
     @Override
     public void resetInvalidProperties() {
-        // Clear pink highlights from all fields
-        portBox.setBackground(java.awt.Color.WHITE);
-        baudBox.setBackground(java.awt.Color.WHITE);
-        dataBitsBox.setBackground(java.awt.Color.WHITE);
-        stopBitsBox.setBackground(java.awt.Color.WHITE);
-        parityBox.setBackground(java.awt.Color.WHITE);
-        flowBox.setBackground(java.awt.Color.WHITE);
-        charsetBox.setBackground(java.awt.Color.WHITE);
-        readTimeoutField.setBackground(java.awt.Color.WHITE);
-        writeTimeoutField.setBackground(java.awt.Color.WHITE);
-        bufferSizeField.setBackground(java.awt.Color.WHITE);
-        signalTimeoutField.setBackground(java.awt.Color.WHITE);
-        breakDurField.setBackground(java.awt.Color.WHITE);
-        healthIntervalField.setBackground(java.awt.Color.WHITE);
-        maxReconnectField.setBackground(java.awt.Color.WHITE);
-        reconnectDelayField.setBackground(java.awt.Color.WHITE);
-        maxLogField.setBackground(java.awt.Color.WHITE);
+        portBox.setBackground(Color.WHITE);
+        baudBox.setBackground(Color.WHITE);
+        dataBitsBox.setBackground(Color.WHITE);
+        stopBitsBox.setBackground(Color.WHITE);
+        parityBox.setBackground(Color.WHITE);
+        flowBox.setBackground(Color.WHITE);
+        charsetBox.setBackground(Color.WHITE);
+        readTimeoutField.setBackground(Color.WHITE);
+        writeTimeoutField.setBackground(Color.WHITE);
+        bufferSizeField.setBackground(Color.WHITE);
+        signalTimeoutField.setBackground(Color.WHITE);
+        breakDurField.setBackground(Color.WHITE);
+        healthIntervalField.setBackground(Color.WHITE);
+        maxReconnectField.setBackground(Color.WHITE);
+        reconnectDelayField.setBackground(Color.WHITE);
+        maxLogField.setBackground(Color.WHITE);
         if (isSender) {
-            ackTimeoutField.setBackground(java.awt.Color.WHITE);
-            ackPatternField.setBackground(java.awt.Color.WHITE);
+            ackTimeoutField.setBackground(Color.WHITE);
+            ackPatternField.setBackground(Color.WHITE);
         }
     }
 
@@ -567,7 +567,7 @@ public class SerialConnectorSettingsPanel extends ConnectorSettingsPanel impleme
             byte[] data = new byte[len / 2];
             for (int i = 0; i < len; i += 2) {
                 data[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4)
-                                     + Character.digit(s.charAt(i + 1), 16));
+                        + Character.digit(s.charAt(i + 1), 16));
             }
             return data;
         } catch (Exception e) { return def; }

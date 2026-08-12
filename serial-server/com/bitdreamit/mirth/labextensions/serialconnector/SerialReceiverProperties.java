@@ -8,10 +8,6 @@ import com.thoughtworks.xstream.annotations.XStreamAlias;
 
 import java.util.Objects;
 
-/**
- * Serial Source Properties — Pure transport. No protocol awareness.
- * Protocol framing is handled by the channel's DataType plugin.
- */
 @XStreamAlias("serialReceiverProperties")
 public class SerialReceiverProperties extends ConnectorProperties implements SourceConnectorPropertiesInterface {
     private static final long serialVersionUID = 1L;
@@ -46,7 +42,7 @@ public class SerialReceiverProperties extends ConnectorProperties implements Sou
         if (obj == null || getClass() != obj.getClass()) return false;
         SerialReceiverProperties other = (SerialReceiverProperties) obj;
         return Objects.equals(portConfig, other.portConfig)
-            && Objects.equals(sourceConnectorProperties, other.sourceConnectorProperties);
+                && Objects.equals(sourceConnectorProperties, other.sourceConnectorProperties);
     }
 
     @Override

@@ -95,12 +95,14 @@ public class SerialSourceConnector extends SourceConnector {
     }
 
     private void startHealthMonitor() {
-        if (!connectorProperties.getPortConfig().isAutoDetectPort()) {
-            Thread t = new Thread(this::healthLoop, "SerialHealth-" + getChannelId());
-            t.setDaemon(true);
-            healthThread.set(t);
-            t.start();
+        SerialPortConfig config = connectorProperties.getPortConfig();
+        if (!config.isHealthMonitorEnabled() || config.isAutoDetectPort()) {
+            return;
         }
+        Thread t = new Thread(this::healthLoop, "SerialHealth-" + getChannelId());
+        t.setDaemon(true);
+        healthThread.set(t);
+        t.start();
     }
 
     private void stopHealthMonitor() {
@@ -155,8 +157,8 @@ public class SerialSourceConnector extends SourceConnector {
 
     private void healthLoop() {
         SerialPortConfig config = connectorProperties.getPortConfig();
-        int maxReconnect = 10;
-        int reconnectDelay = 5000;
+        int maxReconnect = config.getMaxReconnects();
+        int reconnectDelay = config.getReconnectDelay();
         int reconnectAttempts = 0;
 
         while (running.get()) {

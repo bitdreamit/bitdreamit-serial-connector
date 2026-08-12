@@ -9,10 +9,6 @@ import com.thoughtworks.xstream.annotations.XStreamAlias;
 import java.util.Arrays;
 import java.util.Objects;
 
-/**
- * Serial Destination Properties — Pure transport. No protocol awareness.
- * Protocol framing is handled by the channel's DataType plugin.
- */
 @XStreamAlias("serialDispatcherProperties")
 public class SerialDispatcherProperties extends ConnectorProperties implements DestinationConnectorPropertiesInterface {
     private static final long serialVersionUID = 1L;
@@ -44,7 +40,7 @@ public class SerialDispatcherProperties extends ConnectorProperties implements D
     @Override public String getName() { return "Serial Writer"; }
     @Override public String toFormattedString() {
         return "Serial [" + portConfig.getPortName() + " @ " + portConfig.getBaudRate() +
-               ", pool=" + keepConnectionOpen + "]";
+                ", pool=" + keepConnectionOpen + "]";
     }
 
     @Override
@@ -65,11 +61,11 @@ public class SerialDispatcherProperties extends ConnectorProperties implements D
         if (obj == null || getClass() != obj.getClass()) return false;
         SerialDispatcherProperties other = (SerialDispatcherProperties) obj;
         return waitForAckAfterWrite == other.waitForAckAfterWrite
-            && ackTimeout == other.ackTimeout
-            && keepConnectionOpen == other.keepConnectionOpen
-            && Objects.equals(portConfig, other.portConfig)
-            && Arrays.equals(ackPattern, other.ackPattern)
-            && Objects.equals(destinationConnectorProperties, other.destinationConnectorProperties);
+                && ackTimeout == other.ackTimeout
+                && keepConnectionOpen == other.keepConnectionOpen
+                && Objects.equals(portConfig, other.portConfig)
+                && Arrays.equals(ackPattern, other.ackPattern)
+                && Objects.equals(destinationConnectorProperties, other.destinationConnectorProperties);
     }
 
     @Override

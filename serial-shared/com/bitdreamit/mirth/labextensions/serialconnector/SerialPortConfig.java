@@ -30,6 +30,16 @@ public class SerialPortConfig implements Serializable, Cloneable {
     private boolean autoDetectPort = false;
     private boolean autoDetectBaud = false;
 
+    // Health monitor
+    private boolean healthMonitorEnabled = true;
+    private int healthInterval = 5000;
+    private int maxReconnects = 10;
+    private int reconnectDelay = 5000;
+
+    // Protocol analyzer
+    private boolean protocolLoggingEnabled = false;
+    private int maxLogEntries = 1000;
+
     public String getPortName() { return portName; }
     public void setPortName(String portName) { this.portName = portName; }
     public int getBaudRate() { return baudRate; }
@@ -77,6 +87,19 @@ public class SerialPortConfig implements Serializable, Cloneable {
     public boolean isAutoDetectBaud() { return autoDetectBaud; }
     public void setAutoDetectBaud(boolean autoDetectBaud) { this.autoDetectBaud = autoDetectBaud; }
 
+    public boolean isHealthMonitorEnabled() { return healthMonitorEnabled; }
+    public void setHealthMonitorEnabled(boolean healthMonitorEnabled) { this.healthMonitorEnabled = healthMonitorEnabled; }
+    public int getHealthInterval() { return healthInterval; }
+    public void setHealthInterval(int healthInterval) { this.healthInterval = healthInterval; }
+    public int getMaxReconnects() { return maxReconnects; }
+    public void setMaxReconnects(int maxReconnects) { this.maxReconnects = maxReconnects; }
+    public int getReconnectDelay() { return reconnectDelay; }
+    public void setReconnectDelay(int reconnectDelay) { this.reconnectDelay = reconnectDelay; }
+    public boolean isProtocolLoggingEnabled() { return protocolLoggingEnabled; }
+    public void setProtocolLoggingEnabled(boolean protocolLoggingEnabled) { this.protocolLoggingEnabled = protocolLoggingEnabled; }
+    public int getMaxLogEntries() { return maxLogEntries; }
+    public void setMaxLogEntries(int maxLogEntries) { this.maxLogEntries = maxLogEntries; }
+
     public int[] getAutoBaudRates() {
         return new int[]{9600, 19200, 38400, 57600, 115200};
     }
@@ -103,6 +126,9 @@ public class SerialPortConfig implements Serializable, Cloneable {
                 && sendBreak == that.sendBreak && breakDuration == that.breakDuration
                 && flushOnOpen == that.flushOnOpen && flushOnClose == that.flushOnClose
                 && autoDetectPort == that.autoDetectPort && autoDetectBaud == that.autoDetectBaud
+                && healthMonitorEnabled == that.healthMonitorEnabled && healthInterval == that.healthInterval
+                && maxReconnects == that.maxReconnects && reconnectDelay == that.reconnectDelay
+                && protocolLoggingEnabled == that.protocolLoggingEnabled && maxLogEntries == that.maxLogEntries
                 && Objects.equals(portName, that.portName) && Objects.equals(charset, that.charset);
     }
 
@@ -111,6 +137,7 @@ public class SerialPortConfig implements Serializable, Cloneable {
         return Objects.hash(portName, baudRate, dataBits, stopBits, parity, flowControl, charset,
                 binaryMode, readTimeout, writeTimeout, bufferSize, setDtr, setRts, waitCts, waitDsr,
                 waitDcd, signalTimeout, sendBreak, breakDuration, flushOnOpen, flushOnClose,
-                autoDetectPort, autoDetectBaud);
+                autoDetectPort, autoDetectBaud, healthMonitorEnabled, healthInterval, maxReconnects,
+                reconnectDelay, protocolLoggingEnabled, maxLogEntries);
     }
 }
