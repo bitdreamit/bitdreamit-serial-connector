@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <pluginMetaData path="bitdreamit-serial-connector">
     <name>Serial Connector</name>
     <author>Bit Dream IT</author>
@@ -11,13 +11,8 @@
         <string>com.bitdreamit.mirth.labextensions.serialconnector.SerialServerPlugin</string>
     </serverClasses>
 
-    <clientClasses>
-        <string>com.bitdreamit.mirth.labextensions.serialconnector.SerialSourceSettingsPanel</string>
-        <string>com.bitdreamit.mirth.labextensions.serialconnector.SerialDestinationSettingsPanel</string>
-    </clientClasses>
-
-    <library type="CLIENT" path="serial-client.jar" />
-    <library type="SHARED" path="serial-shared.jar" />
-    <library type="SERVER" path="serial-server.jar" />
-    <library type="SERVER" path="lib/jSerialComm-2.10.4.jar" />
+    <library path="serial-client.jar" type="CLIENT"/>
+    <library path="serial-shared.jar" type="SHARED"/>
+    <library path="serial-server.jar" type="SERVER"/>
+    <library path="lib/jSerialComm-2.10.4.jar" type="SERVER"/>
 </pluginMetaData>

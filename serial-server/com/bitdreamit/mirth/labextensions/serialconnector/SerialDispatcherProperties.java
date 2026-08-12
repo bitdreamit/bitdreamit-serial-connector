@@ -68,7 +68,7 @@ public class SerialDispatcherProperties extends ConnectorProperties implements S
 
     @Override
     public String getProtocol() {
-        return "Serial";
+        return "serial";
     }
 
     @Override

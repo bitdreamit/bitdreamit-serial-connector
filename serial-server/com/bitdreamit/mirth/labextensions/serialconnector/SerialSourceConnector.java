@@ -9,12 +9,19 @@ import com.mirth.connect.donkey.server.channel.DispatchResult;
 import com.mirth.connect.donkey.server.channel.SourceConnector;
 import com.mirth.connect.donkey.server.event.ConnectionStatusEvent;
 import com.mirth.connect.donkey.server.event.ErrorEvent;
+import com.mirth.connect.model.converters.ObjectXMLSerializer;
 import com.mirth.connect.server.controllers.ControllerFactory;
 import com.mirth.connect.server.controllers.EventController;
+import com.thoughtworks.xstream.XStream;
+import com.thoughtworks.xstream.security.WildcardTypePermission;
 import org.apache.log4j.Logger;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.PrintWriter;
 import java.nio.charset.Charset;
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -23,12 +30,73 @@ public class SerialSourceConnector extends SourceConnector {
     private static final Logger logger = Logger.getLogger(SerialSourceConnector.class);
     private EventController eventController = ControllerFactory.getFactory().createEventController();
 
+    // Register XStream permission ONCE when this class is loaded by Mirth
+    static {
+        registerXStreamPermission();
+    }
+
+    private static void registerXStreamPermission() {
+        try {
+            XStream xstream = findXStream();
+            if (xstream != null) {
+                xstream.addPermission(new WildcardTypePermission(
+                        new String[]{"com.bitdreamit.mirth.labextensions.serialconnector.**"}));
+                logToFile("SerialSourceConnector: XStream permission registered.");
+                logger.info("SerialSourceConnector: XStream permission registered.");
+            } else {
+                logToFile("SerialSourceConnector: XStream instance not found.");
+            }
+        } catch (Throwable t) {
+            logToFile("SerialSourceConnector: ERROR registering permission: " + t.getMessage());
+            logger.error("SerialSourceConnector: Failed to register XStream permission", t);
+        }
+    }
+
+    private static XStream findXStream() throws Exception {
+        ObjectXMLSerializer serializer = ObjectXMLSerializer.getInstance();
+        try {
+            java.lang.reflect.Method m = ObjectXMLSerializer.class.getMethod("getXStream");
+            Object val = m.invoke(serializer);
+            if (val != null) return (XStream) val;
+        } catch (NoSuchMethodException ignored) {}
+        for (java.lang.reflect.Field f : ObjectXMLSerializer.class.getDeclaredFields()) {
+            if (XStream.class.isAssignableFrom(f.getType())) {
+                f.setAccessible(true);
+                Object val = f.get(serializer);
+                if (val != null) return (XStream) val;
+            }
+        }
+        Class<?> clazz = ObjectXMLSerializer.class.getSuperclass();
+        while (clazz != null && clazz != Object.class) {
+            for (java.lang.reflect.Field f : clazz.getDeclaredFields()) {
+                if (XStream.class.isAssignableFrom(f.getType())) {
+                    f.setAccessible(true);
+                    Object val = f.get(serializer);
+                    if (val != null) return (XStream) val;
+                }
+            }
+            clazz = clazz.getSuperclass();
+        }
+        return null;
+    }
+
+    private static void logToFile(String msg) {
+        try {
+            File f = new File("C:/Program Files/Mirth Connect/logs/serial-xstream.log");
+            f.getParentFile().mkdirs();
+            try (FileWriter fw = new FileWriter(f, true);
+                 PrintWriter pw = new PrintWriter(fw)) {
+                pw.println(LocalDateTime.now() + " " + msg);
+            }
+        } catch (Exception ignored) {}
+    }
+
+    // ... rest of your existing SerialSourceConnector code ...
     private SerialReceiverProperties connectorProperties;
     private SerialPort serialPort;
     private AtomicBoolean running = new AtomicBoolean(false);
     private AtomicReference<Thread> readerThread = new AtomicReference<>();
     private AtomicReference<Thread> healthThread = new AtomicReference<>();
-
     private ByteArrayOutputStream frameBuffer = new ByteArrayOutputStream();
 
     @Override
@@ -37,8 +105,7 @@ public class SerialSourceConnector extends SourceConnector {
     }
 
     @Override
-    public void onUndeploy() {
-    }
+    public void onUndeploy() {}
 
     @Override
     public void onStart() {
@@ -263,7 +330,6 @@ public class SerialSourceConnector extends SourceConnector {
             byte[] payload = Arrays.copyOfRange(buffer, payloadStart, endIdx);
             dispatchRaw(payload, config);
 
-            // Send commit ACK if MLLPv2
             if (config.isUseMLLPv2()) {
                 byte[] ack = parseHexString(config.getCommitAckBytes());
                 if (ack.length > 0) serialPort.writeBytes(ack, ack.length);
@@ -294,7 +360,6 @@ public class SerialSourceConnector extends SourceConnector {
         int searchStart = 0;
 
         while (true) {
-            // Handle ENQ/ACK handshake
             int enqIdx = indexOfByte(buffer, (byte) 0x05, searchStart);
             if (enqIdx >= 0) {
                 serialPort.writeBytes(ackBytes, ackBytes.length);
@@ -309,7 +374,6 @@ public class SerialSourceConnector extends SourceConnector {
             int etxIdx = indexOf(buffer, end, payloadStart);
             if (etxIdx < 0) break;
 
-            // Need at least 4 more bytes: CHK(2) + CR + LF
             if (etxIdx + 4 >= buffer.length) break;
 
             byte[] payload = Arrays.copyOfRange(buffer, payloadStart, etxIdx);

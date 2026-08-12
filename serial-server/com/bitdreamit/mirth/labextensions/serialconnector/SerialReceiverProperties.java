@@ -30,7 +30,7 @@ public class SerialReceiverProperties extends ConnectorProperties implements Ser
 
     @Override
     public String getProtocol() {
-        return "Serial";
+        return "serial";
     }
 
     @Override
