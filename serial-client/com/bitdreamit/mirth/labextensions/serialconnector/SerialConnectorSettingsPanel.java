@@ -1,6 +1,5 @@
 package com.bitdreamit.mirth.labextensions.serialconnector;
 
-import com.mirth.connect.client.ui.panels.connectors.ConnectorSettingsPanel;
 import com.mirth.connect.client.ui.components.MirthCheckBox;
 import com.mirth.connect.client.ui.components.MirthComboBox;
 import com.mirth.connect.donkey.model.channel.ConnectorProperties;
@@ -11,7 +10,7 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
-public class SerialConnectorSettingsPanel extends ConnectorSettingsPanel implements ActionListener {
+public class SerialConnectorSettingsPanel extends JPanel implements ActionListener {
 
     private boolean isSender;
 
@@ -66,7 +65,6 @@ public class SerialConnectorSettingsPanel extends ConnectorSettingsPanel impleme
         refreshPortList();
     }
 
-    @Override
     public String getConnectorName() {
         return isSender ? "Serial Writer" : "Serial Reader";
     }
@@ -392,7 +390,6 @@ public class SerialConnectorSettingsPanel extends ConnectorSettingsPanel impleme
         }
     }
 
-    @Override
     public ConnectorProperties getProperties() {
         if (isSender) {
             SerialDispatcherProperties props = new SerialDispatcherProperties();
@@ -409,7 +406,6 @@ public class SerialConnectorSettingsPanel extends ConnectorSettingsPanel impleme
         }
     }
 
-    @Override
     public void setProperties(ConnectorProperties properties) {
         SerialPortConfig config;
         if (isSender) {
@@ -486,12 +482,10 @@ public class SerialConnectorSettingsPanel extends ConnectorSettingsPanel impleme
         config.setMaxLogEntries(parseInt(maxLogField.getText(), 1000));
     }
 
-    @Override
     public ConnectorProperties getDefaults() {
         return isSender ? new SerialDispatcherProperties() : new SerialReceiverProperties();
     }
 
-    @Override
     public boolean checkProperties(ConnectorProperties properties, boolean highlight) {
         SerialPortConfig config;
         if (isSender) {
@@ -528,7 +522,6 @@ public class SerialConnectorSettingsPanel extends ConnectorSettingsPanel impleme
         return valid;
     }
 
-    @Override
     public void resetInvalidProperties() {
         portBox.setBackground(Color.WHITE);
         baudBox.setBackground(Color.WHITE);
