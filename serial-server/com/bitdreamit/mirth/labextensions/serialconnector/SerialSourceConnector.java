@@ -13,13 +13,12 @@ import com.mirth.connect.server.controllers.ControllerFactory;
 import com.mirth.connect.server.controllers.EventController;
 import org.apache.log4j.Logger;
 
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.Charset;
+import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
-/**
- * Pure Serial Transport — Dumb pipe. No protocol awareness.
- * Protocol framing (MLLP, ASTM, Delimited) is handled by the channel's DataType plugin.
- */
 public class SerialSourceConnector extends SourceConnector {
     private static final Logger logger = Logger.getLogger(SerialSourceConnector.class);
     private EventController eventController = ControllerFactory.getFactory().createEventController();
@@ -29,6 +28,8 @@ public class SerialSourceConnector extends SourceConnector {
     private AtomicBoolean running = new AtomicBoolean(false);
     private AtomicReference<Thread> readerThread = new AtomicReference<>();
     private AtomicReference<Thread> healthThread = new AtomicReference<>();
+
+    private ByteArrayOutputStream frameBuffer = new ByteArrayOutputStream();
 
     @Override
     public void onDeploy() {
@@ -129,15 +130,11 @@ public class SerialSourceConnector extends SourceConnector {
                     byte[] data = new byte[bytesRead];
                     System.arraycopy(buffer, 0, data, 0, bytesRead);
 
-                    String payload = config.isBinaryMode()
-                            ? java.util.Base64.getEncoder().encodeToString(data)
-                            : new String(data, java.nio.charset.Charset.forName(config.getCharset()));
-
-                    try {
-                        dispatchRawMessage(new RawMessage(payload));
-                    } catch (ChannelException e) {
-                        logger.error("Failed to dispatch message to channel", e);
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("Serial read " + bytesRead + " bytes from " + config.getPortName());
                     }
+
+                    processBytes(data, config);
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -149,6 +146,222 @@ public class SerialSourceConnector extends SourceConnector {
                         getConnectorProperties().getName(), "Serial read error", e.getMessage(), e));
             }
         }
+    }
+
+    private void processBytes(byte[] data, SerialPortConfig config) throws Exception {
+        String mode = config.getTransmissionMode();
+
+        switch (mode) {
+            case "RAW":
+                dispatchRaw(data, config);
+                break;
+            case "LINE":
+                processLineMode(data, config);
+                break;
+            case "FRAME":
+                processFrameMode(data, config);
+                break;
+            case "MLLP":
+                processMllpMode(data, config);
+                break;
+            case "ASTM":
+                processAstmMode(data, config);
+                break;
+            default:
+                dispatchRaw(data, config);
+        }
+    }
+
+    private void dispatchRaw(byte[] data, SerialPortConfig config) {
+        String payload = bytesToPayload(data, config);
+        try {
+            dispatchRawMessage(new RawMessage(payload));
+        } catch (ChannelException e) {
+            logger.error("Failed to dispatch raw message to channel", e);
+        }
+    }
+
+    private void processLineMode(byte[] data, SerialPortConfig config) {
+        frameBuffer.write(data, 0, data.length);
+        String delimiter = unescapeDelimiter(config.getLineDelimiter());
+        byte[] buffer = frameBuffer.toByteArray();
+        Charset cs = Charset.forName(config.getCharset());
+        String text = new String(buffer, cs);
+
+        int idx;
+        while ((idx = text.indexOf(delimiter)) >= 0) {
+            String line = text.substring(0, idx);
+            text = text.substring(idx + delimiter.length());
+            if (!line.isEmpty()) {
+                try {
+                    dispatchRawMessage(new RawMessage(line));
+                } catch (ChannelException e) {
+                    logger.error("Failed to dispatch line message", e);
+                }
+            }
+        }
+
+        frameBuffer.reset();
+        if (!text.isEmpty()) {
+            byte[] remaining = text.getBytes(cs);
+            frameBuffer.write(remaining, 0, remaining.length);
+        }
+    }
+
+    private void processFrameMode(byte[] data, SerialPortConfig config) {
+        frameBuffer.write(data, 0, data.length);
+        byte[] start = parseHexString(config.getFrameStartBytes());
+        byte[] end = parseHexString(config.getFrameEndBytes());
+
+        if (start.length == 0 || end.length == 0) {
+            dispatchRaw(data, config);
+            return;
+        }
+
+        byte[] buffer = frameBuffer.toByteArray();
+        int searchStart = 0;
+
+        while (true) {
+            int frameStart = indexOf(buffer, start, searchStart);
+            if (frameStart < 0) break;
+
+            int payloadStart = frameStart + start.length;
+            int frameEnd = indexOf(buffer, end, payloadStart);
+            if (frameEnd < 0) break;
+
+            byte[] payload = Arrays.copyOfRange(buffer, payloadStart, frameEnd);
+            dispatchRaw(payload, config);
+
+            searchStart = frameEnd + end.length;
+        }
+
+        if (searchStart > 0) {
+            byte[] remaining = Arrays.copyOfRange(buffer, searchStart, buffer.length);
+            frameBuffer.reset();
+            frameBuffer.write(remaining, 0, remaining.length);
+        }
+    }
+
+    private void processMllpMode(byte[] data, SerialPortConfig config) throws Exception {
+        frameBuffer.write(data, 0, data.length);
+        byte[] buffer = frameBuffer.toByteArray();
+        int searchStart = 0;
+
+        while (true) {
+            int startIdx = indexOfByte(buffer, (byte) 0x0B, searchStart);
+            if (startIdx < 0) break;
+
+            int payloadStart = startIdx + 1;
+            int endIdx = indexOfBytes(buffer, new byte[]{0x1C, 0x0D}, payloadStart);
+            if (endIdx < 0) break;
+
+            byte[] payload = Arrays.copyOfRange(buffer, payloadStart, endIdx);
+            dispatchRaw(payload, config);
+
+            searchStart = endIdx + 2;
+        }
+
+        if (searchStart > 0) {
+            byte[] remaining = Arrays.copyOfRange(buffer, searchStart, buffer.length);
+            frameBuffer.reset();
+            frameBuffer.write(remaining, 0, remaining.length);
+        }
+    }
+
+    private void processAstmMode(byte[] data, SerialPortConfig config) throws Exception {
+        frameBuffer.write(data, 0, data.length);
+        byte[] buffer = frameBuffer.toByteArray();
+        int searchStart = 0;
+
+        while (true) {
+            int enqIdx = indexOfByte(buffer, (byte) 0x05, searchStart);
+            if (enqIdx >= 0) {
+                serialPort.writeBytes(new byte[]{0x06}, 1);
+                searchStart = enqIdx + 1;
+                continue;
+            }
+
+            int stxIdx = indexOfByte(buffer, (byte) 0x02, searchStart);
+            if (stxIdx < 0) break;
+
+            int etxIdx = indexOfByte(buffer, (byte) 0x03, stxIdx + 1);
+            if (etxIdx < 0) break;
+
+            if (etxIdx + 4 >= buffer.length) break;
+
+            byte[] payload = Arrays.copyOfRange(buffer, stxIdx + 1, etxIdx);
+            byte chk1 = buffer[etxIdx + 1];
+            byte chk2 = buffer[etxIdx + 2];
+
+            if (buffer[etxIdx + 3] == 0x0D && buffer[etxIdx + 4] == 0x0A) {
+                int sum = 0;
+                for (byte b : payload) sum = (sum + b) & 0xFF;
+                String expectedChk = String.format("%02X", sum).substring(0, 2);
+                String actualChk = String.format("%02c%02c", (char) chk1, (char) chk2);
+
+                if (expectedChk.equals(actualChk)) {
+                    dispatchRaw(payload, config);
+                    serialPort.writeBytes(new byte[]{0x06}, 1);
+                } else {
+                    logger.warn("ASTM checksum mismatch on " + config.getPortName());
+                    serialPort.writeBytes(new byte[]{0x15}, 1);
+                }
+                searchStart = etxIdx + 5;
+            } else {
+                searchStart = stxIdx + 1;
+            }
+        }
+
+        if (searchStart > 0) {
+            byte[] remaining = Arrays.copyOfRange(buffer, searchStart, buffer.length);
+            frameBuffer.reset();
+            frameBuffer.write(remaining, 0, remaining.length);
+        }
+    }
+
+    private String bytesToPayload(byte[] data, SerialPortConfig config) {
+        if (config.isBinaryMode()) {
+            return java.util.Base64.getEncoder().encodeToString(data);
+        } else {
+            return new String(data, Charset.forName(config.getCharset()));
+        }
+    }
+
+    private String unescapeDelimiter(String delim) {
+        if (delim == null) return "\r\n";
+        return delim.replace("\\r", "\r").replace("\\n", "\n").replace("\\t", "\t");
+    }
+
+    private byte[] parseHexString(String hex) {
+        if (hex == null || hex.trim().isEmpty()) return new byte[0];
+        String clean = hex.replaceAll("\\s", "");
+        if (clean.length() % 2 != 0) clean = "0" + clean;
+        byte[] result = new byte[clean.length() / 2];
+        for (int i = 0; i < clean.length(); i += 2) {
+            result[i / 2] = (byte) Integer.parseInt(clean.substring(i, i + 2), 16);
+        }
+        return result;
+    }
+
+    private int indexOf(byte[] haystack, byte[] needle, int fromIndex) {
+        outer: for (int i = fromIndex; i <= haystack.length - needle.length; i++) {
+            for (int j = 0; j < needle.length; j++) {
+                if (haystack[i + j] != needle[j]) continue outer;
+            }
+            return i;
+        }
+        return -1;
+    }
+
+    private int indexOfByte(byte[] haystack, byte needle, int fromIndex) {
+        for (int i = fromIndex; i < haystack.length; i++) {
+            if (haystack[i] == needle) return i;
+        }
+        return -1;
+    }
+
+    private int indexOfBytes(byte[] haystack, byte[] needle, int fromIndex) {
+        return indexOf(haystack, needle, fromIndex);
     }
 
     private void healthLoop() {

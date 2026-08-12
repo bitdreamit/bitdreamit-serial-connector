@@ -5,7 +5,6 @@ import com.mirth.connect.client.ui.components.MirthComboBox;
 import com.mirth.connect.donkey.model.channel.ConnectorProperties;
 
 import javax.swing.*;
-import javax.swing.border.TitledBorder;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -15,6 +14,7 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
     private boolean isSender;
     private ConnectorProperties properties;
 
+    // Basic
     private MirthComboBox portBox;
     private JButton refreshPortsBtn;
     private MirthCheckBox autoDetectPortBox;
@@ -27,10 +27,12 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
     private MirthComboBox charsetBox;
     private MirthCheckBox binaryBox;
 
+    // Timeout
     private JTextField readTimeoutField;
     private JTextField writeTimeoutField;
     private JTextField bufferSizeField;
 
+    // Signal
     private MirthCheckBox dtrBox;
     private MirthCheckBox rtsBox;
     private MirthCheckBox waitCtsBox;
@@ -38,19 +40,31 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
     private MirthCheckBox waitDcdBox;
     private JTextField signalTimeoutField;
 
+    // Break
     private MirthCheckBox breakBox;
     private JTextField breakDurField;
     private MirthCheckBox flushOpenBox;
     private MirthCheckBox flushCloseBox;
 
+    // Transmission Mode (CardLayout)
+    private MirthComboBox transmissionModeBox;
+    private JPanel transmissionCards;
+    private CardLayout transmissionCardLayout;
+    private JTextField lineDelimiterField;
+    private JTextField frameStartField;
+    private JTextField frameEndField;
+
+    // Health
     private MirthCheckBox healthBox;
     private JTextField healthIntervalField;
     private JTextField maxReconnectField;
     private JTextField reconnectDelayField;
 
+    // Analyzer
     private MirthCheckBox analyzerBox;
     private JTextField maxLogField;
 
+    // Destination only
     private MirthCheckBox waitAckBox;
     private JTextField ackTimeoutField;
     private MirthCheckBox keepOpenBox;
@@ -74,50 +88,65 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         setBackground(Color.WHITE);
         setLayout(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(2, 4, 2, 4);
+        gbc.insets = new Insets(3, 8, 3, 8);
         gbc.anchor = GridBagConstraints.WEST;
-        gbc.fill = GridBagConstraints.NONE;
-        gbc.weightx = 0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1.0;
         gbc.weighty = 0;
         gbc.gridx = 0;
         gbc.gridy = 0;
 
+        add(makeSectionHeader("Serial Settings"), gbc); gbc.gridy++;
         add(createBasicPanel(), gbc); gbc.gridy++;
         add(createTimeoutPanel(), gbc); gbc.gridy++;
         add(createSignalPanel(), gbc); gbc.gridy++;
         add(createBreakPanel(), gbc); gbc.gridy++;
+        add(makeSectionHeader("Transmission Mode"), gbc); gbc.gridy++;
+        add(createTransmissionPanel(), gbc); gbc.gridy++;
+        add(makeSectionHeader("Health Monitor"), gbc); gbc.gridy++;
         add(createHealthPanel(), gbc); gbc.gridy++;
+        add(makeSectionHeader("Protocol Analyzer"), gbc); gbc.gridy++;
         add(createAnalyzerPanel(), gbc); gbc.gridy++;
         if (isSender) {
+            add(makeSectionHeader("Destination Options"), gbc); gbc.gridy++;
             add(createDestPanel(), gbc); gbc.gridy++;
         }
 
-        // Push everything to top-left; prevent stretch
-        gbc.weightx = 1.0;
         gbc.weighty = 1.0;
         gbc.fill = GridBagConstraints.BOTH;
         add(Box.createGlue(), gbc);
     }
 
+    private JPanel makeSectionHeader(String title) {
+        JPanel p = new JPanel(new BorderLayout(0, 2));
+        p.setBackground(Color.WHITE);
+        JLabel label = new JLabel(title);
+        label.setFont(label.getFont().deriveFont(Font.BOLD, 12f));
+        p.add(label, BorderLayout.NORTH);
+        JSeparator sep = new JSeparator();
+        sep.setForeground(new Color(160, 160, 160));
+        p.add(sep, BorderLayout.CENTER);
+        p.setMaximumSize(new Dimension(Integer.MAX_VALUE, 22));
+        p.setPreferredSize(new Dimension(400, 22));
+        return p;
+    }
+
     private JPanel createBasicPanel() {
         JPanel p = new JPanel(new GridBagLayout());
         p.setBackground(Color.WHITE);
-        p.setBorder(new TitledBorder("Basic Settings"));
         GridBagConstraints g = mkGbc();
 
         int row = 0;
-
-        // Port row
         g.gridy = row++;
         g.gridx = 0; p.add(new JLabel("Port:"), g);
         g.gridx = 1;
         portBox = new MirthComboBox();
         portBox.setEditable(true);
-        portBox.setPreferredSize(new Dimension(100, 22));
+        portBox.setPreferredSize(new Dimension(110, 22));
         p.add(portBox, g);
         g.gridx = 2;
         refreshPortsBtn = new JButton("Refresh");
-        refreshPortsBtn.setToolTipText("Shows common ports. Server auto-detect works at runtime.");
+        refreshPortsBtn.setToolTipText("Refresh available serial ports");
         refreshPortsBtn.addActionListener(this);
         p.add(refreshPortsBtn, g);
         g.gridx = 3;
@@ -125,13 +154,12 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         autoDetectPortBox.setBackground(Color.WHITE);
         p.add(autoDetectPortBox, g);
 
-        // Baud row
         g.gridy = row++;
         g.gridx = 0; p.add(new JLabel("Baud Rate:"), g);
         g.gridx = 1;
         baudBox = new MirthComboBox();
         baudBox.setModel(new DefaultComboBoxModel<>(new String[]{"9600", "19200", "38400", "57600", "115200", "230400"}));
-        baudBox.setPreferredSize(new Dimension(100, 22));
+        baudBox.setPreferredSize(new Dimension(110, 22));
         p.add(baudBox, g);
         g.gridx = 2; g.gridwidth = 2;
         autoDetectBaudBox = new MirthCheckBox("Auto-detect");
@@ -139,7 +167,6 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         p.add(autoDetectBaudBox, g);
         g.gridwidth = 1;
 
-        // Data/Stop bits row
         g.gridy = row++;
         g.gridx = 0; p.add(new JLabel("Data Bits:"), g);
         g.gridx = 1;
@@ -155,28 +182,26 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         stopBitsBox.setPreferredSize(new Dimension(60, 22));
         p.add(stopBitsBox, g);
 
-        // Parity/Flow row
         g.gridy = row++;
         g.gridx = 0; p.add(new JLabel("Parity:"), g);
         g.gridx = 1;
         parityBox = new MirthComboBox();
         parityBox.setModel(new DefaultComboBoxModel<>(new String[]{"None", "Odd", "Even", "Mark", "Space"}));
-        parityBox.setPreferredSize(new Dimension(80, 22));
+        parityBox.setPreferredSize(new Dimension(90, 22));
         p.add(parityBox, g);
         g.gridx = 2; p.add(new JLabel("Flow:"), g);
         g.gridx = 3;
         flowBox = new MirthComboBox();
         flowBox.setModel(new DefaultComboBoxModel<>(new String[]{"None", "RTS/CTS", "XON/XOFF", "DSR/DTR"}));
-        flowBox.setPreferredSize(new Dimension(100, 22));
+        flowBox.setPreferredSize(new Dimension(110, 22));
         p.add(flowBox, g);
 
-        // Charset/Binary row
         g.gridy = row++;
         g.gridx = 0; p.add(new JLabel("Charset:"), g);
         g.gridx = 1; g.gridwidth = 2;
         charsetBox = new MirthComboBox();
         charsetBox.setModel(new DefaultComboBoxModel<>(new String[]{"UTF-8", "ISO-8859-1", "US-ASCII", "Windows-1252"}));
-        charsetBox.setPreferredSize(new Dimension(120, 22));
+        charsetBox.setPreferredSize(new Dimension(130, 22));
         p.add(charsetBox, g);
         g.gridwidth = 1;
         g.gridx = 3;
@@ -190,7 +215,6 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
     private JPanel createTimeoutPanel() {
         JPanel p = new JPanel(new GridBagLayout());
         p.setBackground(Color.WHITE);
-        p.setBorder(new TitledBorder("Timeouts & Buffers"));
         GridBagConstraints g = mkGbc();
 
         g.gridy = 0;
@@ -218,7 +242,6 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
     private JPanel createSignalPanel() {
         JPanel p = new JPanel(new GridBagLayout());
         p.setBackground(Color.WHITE);
-        p.setBorder(new TitledBorder("Signal Control"));
         GridBagConstraints g = mkGbc();
 
         g.gridy = 0;
@@ -247,13 +270,13 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         waitDcdBox.setBackground(Color.WHITE);
         p.add(waitDcdBox, g);
         g.gridx = 1; g.gridwidth = 3;
-        JPanel timeoutRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        timeoutRow.setBackground(Color.WHITE);
-        timeoutRow.add(new JLabel("Signal Timeout (ms):"));
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        row.setBackground(Color.WHITE);
+        row.add(new JLabel("Timeout (ms):"));
         signalTimeoutField = new JTextField("1000", 6);
         signalTimeoutField.setPreferredSize(new Dimension(60, 22));
-        timeoutRow.add(signalTimeoutField);
-        p.add(timeoutRow, g);
+        row.add(signalTimeoutField);
+        p.add(row, g);
         g.gridwidth = 1;
 
         return p;
@@ -262,7 +285,6 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
     private JPanel createBreakPanel() {
         JPanel p = new JPanel(new GridBagLayout());
         p.setBackground(Color.WHITE);
-        p.setBorder(new TitledBorder("Break & Flush"));
         GridBagConstraints g = mkGbc();
 
         g.gridy = 0; g.gridx = 0; g.gridwidth = 4;
@@ -271,13 +293,13 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         p.add(breakBox, g);
 
         g.gridy = 1; g.gridx = 0; g.gridwidth = 2;
-        JPanel breakRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        breakRow.setBackground(Color.WHITE);
-        breakRow.add(new JLabel("Break Duration (ms):"));
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        row.setBackground(Color.WHITE);
+        row.add(new JLabel("Duration (ms):"));
         breakDurField = new JTextField("100", 6);
         breakDurField.setPreferredSize(new Dimension(60, 22));
-        breakRow.add(breakDurField);
-        p.add(breakRow, g);
+        row.add(breakDurField);
+        p.add(row, g);
 
         g.gridy = 2; g.gridx = 0; g.gridwidth = 2;
         flushOpenBox = new MirthCheckBox("Flush on Open");
@@ -293,10 +315,111 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         return p;
     }
 
+    private JPanel createTransmissionPanel() {
+        JPanel p = new JPanel(new GridBagLayout());
+        p.setBackground(Color.WHITE);
+        GridBagConstraints g = mkGbc();
+
+        g.gridy = 0;
+        g.gridx = 0;
+        p.add(new JLabel("Mode:"), g);
+        g.gridx = 1; g.gridwidth = 3;
+        transmissionModeBox = new MirthComboBox();
+        transmissionModeBox.setModel(new DefaultComboBoxModel<>(new String[]{"RAW", "LINE", "FRAME", "MLLP", "ASTM"}));
+        transmissionModeBox.setPreferredSize(new Dimension(130, 22));
+        transmissionModeBox.addActionListener(this);
+        p.add(transmissionModeBox, g);
+        g.gridwidth = 1;
+
+        g.gridy = 1;
+        g.gridx = 0; g.gridwidth = 4;
+        g.fill = GridBagConstraints.HORIZONTAL;
+        g.weightx = 1.0;
+
+        transmissionCardLayout = new CardLayout();
+        transmissionCards = new JPanel(transmissionCardLayout);
+        transmissionCards.setBackground(Color.WHITE);
+        transmissionCards.setBorder(BorderFactory.createEmptyBorder(4, 0, 0, 0));
+
+        transmissionCards.add(createRawCard(), "RAW");
+        transmissionCards.add(createLineCard(), "LINE");
+        transmissionCards.add(createFrameCard(), "FRAME");
+        transmissionCards.add(createMllpCard(), "MLLP");
+        transmissionCards.add(createAstmCard(), "ASTM");
+
+        p.add(transmissionCards, g);
+        g.gridwidth = 1;
+
+        return p;
+    }
+
+    private JPanel createRawCard() {
+        JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        p.setBackground(Color.WHITE);
+        JLabel info = new JLabel("No framing. Raw bytes pass through unmodified.");
+        info.setForeground(Color.DARK_GRAY);
+        p.add(info);
+        return p;
+    }
+
+    private JPanel createLineCard() {
+        JPanel p = new JPanel(new GridBagLayout());
+        p.setBackground(Color.WHITE);
+        GridBagConstraints g = mkGbc();
+        g.gridy = 0; g.gridx = 0;
+        p.add(new JLabel("Line Delimiter:"), g);
+        g.gridx = 1;
+        lineDelimiterField = new JTextField("\\r\\n", 12);
+        lineDelimiterField.setPreferredSize(new Dimension(100, 22));
+        p.add(lineDelimiterField, g);
+        g.gridx = 2;
+        JLabel hint = new JLabel("Use \\r\\n, \\n, \\r, or custom text");
+        hint.setFont(hint.getFont().deriveFont(10f));
+        hint.setForeground(Color.GRAY);
+        p.add(hint, g);
+        return p;
+    }
+
+    private JPanel createFrameCard() {
+        JPanel p = new JPanel(new GridBagLayout());
+        p.setBackground(Color.WHITE);
+        GridBagConstraints g = mkGbc();
+        g.gridy = 0; g.gridx = 0;
+        p.add(new JLabel("Start Bytes (hex):"), g);
+        g.gridx = 1;
+        frameStartField = new JTextField("", 8);
+        frameStartField.setPreferredSize(new Dimension(80, 22));
+        p.add(frameStartField, g);
+        g.gridx = 2;
+        p.add(new JLabel("End Bytes (hex):"), g);
+        g.gridx = 3;
+        frameEndField = new JTextField("", 8);
+        frameEndField.setPreferredSize(new Dimension(80, 22));
+        p.add(frameEndField, g);
+        return p;
+    }
+
+    private JPanel createMllpCard() {
+        JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        p.setBackground(Color.WHITE);
+        JLabel info = new JLabel("<VT> payload <FS><CR>  (HL7 MLLP framing)");
+        info.setForeground(Color.DARK_GRAY);
+        p.add(info);
+        return p;
+    }
+
+    private JPanel createAstmCard() {
+        JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        p.setBackground(Color.WHITE);
+        JLabel info = new JLabel("<STX> payload <ETX><CHK><CR><LF>  (ASTM E1381 framing)");
+        info.setForeground(Color.DARK_GRAY);
+        p.add(info);
+        return p;
+    }
+
     private JPanel createHealthPanel() {
         JPanel p = new JPanel(new GridBagLayout());
         p.setBackground(Color.WHITE);
-        p.setBorder(new TitledBorder("Health Monitor"));
         GridBagConstraints g = mkGbc();
 
         g.gridy = 0; g.gridx = 0; g.gridwidth = 4;
@@ -330,7 +453,6 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
     private JPanel createAnalyzerPanel() {
         JPanel p = new JPanel(new GridBagLayout());
         p.setBackground(Color.WHITE);
-        p.setBorder(new TitledBorder("Protocol Analyzer"));
         GridBagConstraints g = mkGbc();
 
         g.gridy = 0; g.gridx = 0; g.gridwidth = 4;
@@ -351,7 +473,6 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
     private JPanel createDestPanel() {
         JPanel p = new JPanel(new GridBagLayout());
         p.setBackground(Color.WHITE);
-        p.setBorder(new TitledBorder("Destination Options"));
         GridBagConstraints g = mkGbc();
 
         g.gridy = 0; g.gridx = 0; g.gridwidth = 2;
@@ -393,6 +514,9 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
     public void actionPerformed(ActionEvent e) {
         if (e.getSource() == refreshPortsBtn) {
             refreshPortList();
+        } else if (e.getSource() == transmissionModeBox) {
+            String mode = (String) transmissionModeBox.getSelectedItem();
+            transmissionCardLayout.show(transmissionCards, mode);
         }
     }
 
@@ -462,6 +586,13 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         flushCloseBox.setSelected(config.isFlushOnClose());
         autoDetectPortBox.setSelected(config.isAutoDetectPort());
         autoDetectBaudBox.setSelected(config.isAutoDetectBaud());
+
+        transmissionModeBox.setSelectedItem(config.getTransmissionMode());
+        lineDelimiterField.setText(config.getLineDelimiter());
+        frameStartField.setText(config.getFrameStartBytes());
+        frameEndField.setText(config.getFrameEndBytes());
+        transmissionCardLayout.show(transmissionCards, config.getTransmissionMode());
+
         healthBox.setSelected(config.isHealthMonitorEnabled());
         healthIntervalField.setText(String.valueOf(config.getHealthInterval()));
         maxReconnectField.setText(String.valueOf(config.getMaxReconnects()));
@@ -494,6 +625,12 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         config.setFlushOnClose(flushCloseBox.isSelected());
         config.setAutoDetectPort(autoDetectPortBox.isSelected());
         config.setAutoDetectBaud(autoDetectBaudBox.isSelected());
+
+        config.setTransmissionMode((String) transmissionModeBox.getSelectedItem());
+        config.setLineDelimiter(lineDelimiterField.getText());
+        config.setFrameStartBytes(frameStartField.getText());
+        config.setFrameEndBytes(frameEndField.getText());
+
         config.setHealthMonitorEnabled(healthBox.isSelected());
         config.setHealthInterval(parseInt(healthIntervalField.getText(), 5000));
         config.setMaxReconnects(parseInt(maxReconnectField.getText(), 10));
@@ -555,6 +692,9 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         maxReconnectField.setBackground(Color.WHITE);
         reconnectDelayField.setBackground(Color.WHITE);
         maxLogField.setBackground(Color.WHITE);
+        lineDelimiterField.setBackground(Color.WHITE);
+        frameStartField.setBackground(Color.WHITE);
+        frameEndField.setBackground(Color.WHITE);
         if (isSender) {
             ackTimeoutField.setBackground(Color.WHITE);
             ackPatternField.setBackground(Color.WHITE);

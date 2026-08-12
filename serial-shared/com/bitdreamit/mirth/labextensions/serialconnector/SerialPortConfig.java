@@ -40,13 +40,12 @@ public class SerialPortConfig implements Serializable, Cloneable {
     private boolean protocolLoggingEnabled = false;
     private int maxLogEntries = 1000;
 
-    // Transmission Mode (like TCP Listener)
-    private String transmissionMode = "RAW"; // RAW, LINE, FRAME, MLLP, ASTM
-    private String lineDelimiter = "\\r\\n"; // for LINE mode: \r\n, \n, \r, or custom
-    private String frameStartBytes = ""; // hex string for FRAME mode
-    private String frameEndBytes = ""; // hex string for FRAME mode
+    // Transmission Mode (like TCP)
+    private String transmissionMode = "RAW";
+    private String lineDelimiter = "\\r\\n";
+    private String frameStartBytes = "";
+    private String frameEndBytes = "";
 
-    // Getters and Setters
     public String getPortName() { return portName; }
     public void setPortName(String portName) { this.portName = portName; }
     public int getBaudRate() { return baudRate; }
