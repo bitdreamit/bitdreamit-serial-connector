@@ -10,6 +10,14 @@ import org.apache.log4j.Logger;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 
+/**
+ * Serial Source Settings Panel (client-side).
+ *
+ * CRITICAL: This class MUST exist ONLY in serial-client.jar.
+ * It must NOT contain SerialReceiverProperties or SerialDispatcherProperties.
+ *
+ * All diagnostic logging goes through log4j (Mirth Administrator client log).
+ */
 public class SerialSourceSettingsPanel extends ConnectorSettingsPanel {
     private static final Logger logger = Logger.getLogger(SerialSourceSettingsPanel.class);
     private final SerialConnectorSettingsPanel panel;
@@ -20,16 +28,20 @@ public class SerialSourceSettingsPanel extends ConnectorSettingsPanel {
             if (xstream != null) {
                 xstream.addPermission(new WildcardTypePermission(
                         new String[]{"com.bitdreamit.mirth.labextensions.serialconnector.**"}));
-                logger.info("Serial Connector client XStream permissions registered from source panel.");
+                xstream.processAnnotations(SerialReceiverProperties.class);
+                xstream.processAnnotations(SerialPortConfig.class);
+                logger.info("SerialSourceSettingsPanel: client XStream permissions + annotations registered.");
+            } else {
+                logger.error("SerialSourceSettingsPanel: XStream instance is NULL — " +
+                             "client-side channel editing will fail!");
             }
         } catch (Exception e) {
-            logger.error("Failed to register client XStream permissions from source panel", e);
+            logger.error("SerialSourceSettingsPanel: failed to register client XStream permissions", e);
         }
     }
 
     public SerialSourceSettingsPanel() {
         panel = new SerialConnectorSettingsPanel(false);
-        // Anchor to top-left (NORTHWEST) so panel stays left-aligned, not centered
         setLayout(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.anchor = GridBagConstraints.NORTHWEST;
@@ -42,24 +54,16 @@ public class SerialSourceSettingsPanel extends ConnectorSettingsPanel {
     }
 
     @Override
-    public String getConnectorName() {
-        return panel.getConnectorName();
-    }
+    public String getConnectorName() { return panel.getConnectorName(); }
 
     @Override
-    public ConnectorProperties getProperties() {
-        return panel.getProperties();
-    }
+    public ConnectorProperties getProperties() { return panel.getProperties(); }
 
     @Override
-    public void setProperties(ConnectorProperties properties) {
-        panel.setProperties(properties);
-    }
+    public void setProperties(ConnectorProperties properties) { panel.setProperties(properties); }
 
     @Override
-    public ConnectorProperties getDefaults() {
-        return panel.getDefaults();
-    }
+    public ConnectorProperties getDefaults() { return panel.getDefaults(); }
 
     @Override
     public boolean checkProperties(ConnectorProperties properties, boolean highlight) {
@@ -67,45 +71,55 @@ public class SerialSourceSettingsPanel extends ConnectorSettingsPanel {
     }
 
     @Override
-    public void resetInvalidProperties() {
-        panel.resetInvalidProperties();
-    }
+    public void resetInvalidProperties() { panel.resetInvalidProperties(); }
 
+    @SuppressWarnings("unchecked")
     private static XStream findXStream() {
         try {
             ObjectXMLSerializer serializer = ObjectXMLSerializer.getInstance();
             if (serializer == null) return null;
 
-            for (java.lang.reflect.Field f : ObjectXMLSerializer.class.getDeclaredFields()) {
-                if (XStream.class.isAssignableFrom(f.getType())) {
+            try {
+                java.lang.reflect.Method m = ObjectXMLSerializer.class.getMethod("getXStream");
+                Object val = m.invoke(serializer);
+                if (val instanceof XStream) return (XStream) val;
+            } catch (NoSuchMethodException ignored) {
+            } catch (Exception e) {
+                logger.warn("SerialSourceSettingsPanel: getXStream() threw: " + e.getMessage());
+            }
+
+            XStream found = findXStreamField(serializer, serializer.getClass());
+            if (found != null) return found;
+
+            for (java.lang.reflect.Field f : serializer.getClass().getDeclaredFields()) {
+                try {
                     f.setAccessible(true);
                     Object val = f.get(serializer);
-                    if (val != null) return (XStream) val;
-                }
-            }
-
-            for (java.lang.reflect.Method m : ObjectXMLSerializer.class.getDeclaredMethods()) {
-                if (XStream.class.isAssignableFrom(m.getReturnType()) && m.getParameterCount() == 0) {
-                    m.setAccessible(true);
-                    Object val = m.invoke(serializer);
-                    if (val != null) return (XStream) val;
-                }
-            }
-
-            Class<?> clazz = ObjectXMLSerializer.class.getSuperclass();
-            while (clazz != null && clazz != Object.class) {
-                for (java.lang.reflect.Field f : clazz.getDeclaredFields()) {
-                    if (XStream.class.isAssignableFrom(f.getType())) {
-                        f.setAccessible(true);
-                        Object val = f.get(serializer);
-                        if (val != null) return (XStream) val;
+                    if (val != null) {
+                        XStream inner = findXStreamField(val, val.getClass());
+                        if (inner != null) return inner;
                     }
-                }
-                clazz = clazz.getSuperclass();
+                } catch (Exception ignored) {}
             }
-
+            return null;
         } catch (Exception e) {
-            logger.error("Reflection failed to find client XStream", e);
+            logger.error("SerialSourceSettingsPanel: reflection failed to find client XStream", e);
+            return null;
+        }
+    }
+
+    private static XStream findXStreamField(Object target, Class<?> clazz) {
+        while (clazz != null && clazz != Object.class) {
+            for (java.lang.reflect.Field f : clazz.getDeclaredFields()) {
+                if (XStream.class.isAssignableFrom(f.getType())) {
+                    try {
+                        f.setAccessible(true);
+                        Object val = f.get(target);
+                        if (val instanceof XStream) return (XStream) val;
+                    } catch (Exception ignored) {}
+                }
+            }
+            clazz = clazz.getSuperclass();
         }
         return null;
     }

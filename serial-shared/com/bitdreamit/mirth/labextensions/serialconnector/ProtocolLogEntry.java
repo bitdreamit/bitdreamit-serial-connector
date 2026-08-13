@@ -3,6 +3,10 @@ package com.bitdreamit.mirth.labextensions.serialconnector;
 import java.io.Serializable;
 import java.util.Arrays;
 
+/**
+ * Protocol log entry for the serial protocol analyzer.
+ * CRITICAL: This class MUST exist ONLY in serial-shared.jar.
+ */
 public class ProtocolLogEntry implements Serializable {
     private static final long serialVersionUID = 1L;
 

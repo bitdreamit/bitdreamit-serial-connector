@@ -9,6 +9,11 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
+/**
+ * Serial Connector Settings Panel (client-side UI).
+ *
+ * CRITICAL: This class MUST exist ONLY in serial-client.jar.
+ */
 public class SerialConnectorSettingsPanel extends JPanel implements ActionListener {
 
     private boolean isSender;
@@ -586,7 +591,6 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         config.setMaxLogEntries(parseInt(maxLogField.getText(), 1000));
     }
 
-    // jSerialComm: ONE_STOP_BIT=1, ONE_POINT_FIVE_STOP_BITS=3, TWO_STOP_BITS=2
     private int mapStopBitsFromString(String s) {
         if ("1.5".equals(s)) return 3;
         return (int) parseDouble(s, 1);

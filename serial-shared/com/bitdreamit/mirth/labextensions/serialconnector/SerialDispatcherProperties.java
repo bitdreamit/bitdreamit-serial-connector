@@ -6,14 +6,19 @@ import com.mirth.connect.donkey.model.channel.DestinationConnectorPropertiesInte
 import com.mirth.connect.donkey.util.DonkeyElement;
 import com.thoughtworks.xstream.annotations.XStreamAlias;
 
-import java.io.Serializable;
 import java.util.Arrays;
 import java.util.Objects;
 
+/**
+ * Serial Destination Properties.
+ *
+ * CRITICAL: This class MUST exist ONLY in serial-shared.jar.
+ * Do NOT duplicate it in serial-server or serial-client.
+ *
+ * Implements DestinationConnectorPropertiesInterface — REQUIRED by Mirth for destination connectors.
+ */
 @XStreamAlias("serialDispatcherProperties")
-public class SerialDispatcherProperties extends ConnectorProperties
-        implements Serializable, Cloneable, DestinationConnectorPropertiesInterface {
-
+public class SerialDispatcherProperties extends ConnectorProperties implements DestinationConnectorPropertiesInterface {
     private static final long serialVersionUID = 1L;
 
     private SerialPortConfig portConfig = new SerialPortConfig();
@@ -50,47 +55,25 @@ public class SerialDispatcherProperties extends ConnectorProperties
         this.destinationConnectorProperties = destinationConnectorProperties;
     }
 
-    public boolean isWaitForAckAfterWrite() {
-        return waitForAckAfterWrite;
-    }
+    public boolean isWaitForAckAfterWrite() { return waitForAckAfterWrite; }
+    public void setWaitForAckAfterWrite(boolean waitForAckAfterWrite) { this.waitForAckAfterWrite = waitForAckAfterWrite; }
 
-    public void setWaitForAckAfterWrite(boolean waitForAckAfterWrite) {
-        this.waitForAckAfterWrite = waitForAckAfterWrite;
-    }
+    public int getAckTimeout() { return ackTimeout; }
+    public void setAckTimeout(int ackTimeout) { this.ackTimeout = ackTimeout; }
 
-    public int getAckTimeout() {
-        return ackTimeout;
-    }
-
-    public void setAckTimeout(int ackTimeout) {
-        this.ackTimeout = ackTimeout;
-    }
-
-    public byte[] getAckPattern() {
-        return ackPattern;
-    }
-
+    public byte[] getAckPattern() { return ackPattern; }
     public void setAckPattern(byte[] ackPattern) {
-        this.ackPattern = ackPattern;
+        this.ackPattern = ackPattern != null ? ackPattern.clone() : null;
     }
 
-    public boolean isKeepConnectionOpen() {
-        return keepConnectionOpen;
-    }
-
-    public void setKeepConnectionOpen(boolean keepConnectionOpen) {
-        this.keepConnectionOpen = keepConnectionOpen;
-    }
+    public boolean isKeepConnectionOpen() { return keepConnectionOpen; }
+    public void setKeepConnectionOpen(boolean keepConnectionOpen) { this.keepConnectionOpen = keepConnectionOpen; }
 
     @Override
-    public String getProtocol() {
-        return "serial";
-    }
+    public String getProtocol() { return "serial"; }
 
     @Override
-    public String getName() {
-        return "Serial Writer";
-    }
+    public String getName() { return "Serial Writer"; }
 
     @Override
     public String toFormattedString() {
@@ -99,32 +82,30 @@ public class SerialDispatcherProperties extends ConnectorProperties
         sb.append("Port: ").append(c.getPortName())
                 .append(", Baud: ").append(c.getBaudRate())
                 .append(", Mode: ").append(c.getTransmissionMode());
-        if (waitForAckAfterWrite) {
-            sb.append(", ACK: ").append(ackTimeout).append("ms");
-        }
-        if (keepConnectionOpen) {
-            sb.append(", Pooled");
-        }
+        if (waitForAckAfterWrite) sb.append(", ACK: ").append(ackTimeout).append("ms");
+        if (keepConnectionOpen)   sb.append(", Pooled");
         return sb.toString();
     }
 
     @Override
-    public boolean canValidateResponse() {
-        return false;
-    }
+    public boolean canValidateResponse() { return false; }
 
     @Override
     public SerialDispatcherProperties clone() {
         try {
             SerialDispatcherProperties copy = (SerialDispatcherProperties) super.clone();
             copy.portConfig = (this.portConfig != null) ? this.portConfig.clone() : new SerialPortConfig();
-            copy.destinationConnectorProperties = new DestinationConnectorProperties();
             if (this.ackPattern != null) {
                 copy.ackPattern = this.ackPattern.clone();
             }
+            // Shallow copy of destinationConnectorProperties — its clone() is protected
+            // in some Mirth SDK versions and cannot be called directly.
+            // This is safe: Mirth re-populates destinationConnectorProperties from the
+            // channel XML on deployment, so the shared reference is overwritten.
+            copy.destinationConnectorProperties = this.destinationConnectorProperties;
             return copy;
         } catch (CloneNotSupportedException e) {
-            throw new AssertionError();
+            throw new AssertionError(e);
         }
     }
 
@@ -133,29 +114,24 @@ public class SerialDispatcherProperties extends ConnectorProperties
         if (this == o) return true;
         if (!(o instanceof SerialDispatcherProperties)) return false;
         SerialDispatcherProperties that = (SerialDispatcherProperties) o;
-        return waitForAckAfterWrite == that.waitForAckAfterWrite &&
-                ackTimeout == that.ackTimeout &&
-                keepConnectionOpen == that.keepConnectionOpen &&
-                Objects.equals(getPortConfig(), that.getPortConfig()) &&
-                Objects.equals(getDestinationConnectorProperties(), that.getDestinationConnectorProperties()) &&
-                Arrays.equals(ackPattern, that.ackPattern);
+        return waitForAckAfterWrite == that.waitForAckAfterWrite
+                && ackTimeout == that.ackTimeout
+                && keepConnectionOpen == that.keepConnectionOpen
+                && Objects.equals(getPortConfig(), that.getPortConfig())
+                && Objects.equals(getDestinationConnectorProperties(), that.getDestinationConnectorProperties())
+                && Arrays.equals(ackPattern, that.ackPattern);
     }
 
     @Override
     public int hashCode() {
         int result = Objects.hash(getPortConfig(), getDestinationConnectorProperties(),
                 waitForAckAfterWrite, ackTimeout, keepConnectionOpen);
-        result = 31 * result + Arrays.hashCode(ackPattern);
-        return result;
+        return 31 * result + Arrays.hashCode(ackPattern);
     }
 
     @Override
-    public void migrate3_0_1(DonkeyElement donkeyElement) {
-
-    }
+    public void migrate3_0_1(DonkeyElement donkeyElement) { }
 
     @Override
-    public void migrate3_0_2(DonkeyElement donkeyElement) {
-
-    }
+    public void migrate3_0_2(DonkeyElement donkeyElement) { }
 }

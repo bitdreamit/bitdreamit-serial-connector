@@ -6,6 +6,11 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
+/**
+ * Transmission Mode Settings Dialog (client-side UI).
+ *
+ * CRITICAL: This class MUST exist ONLY in serial-client.jar.
+ */
 public class SerialTransmissionModeDialog extends JDialog implements ActionListener {
     private boolean saved = false;
     private String mode;
@@ -48,7 +53,6 @@ public class SerialTransmissionModeDialog extends JDialog implements ActionListe
         g.anchor = GridBagConstraints.WEST;
         g.fill = GridBagConstraints.HORIZONTAL;
 
-        // Row 0: Start Bytes
         rowStart = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         rowStart.setBackground(Color.WHITE);
         rowStart.add(new JLabel("Start of Message Bytes:"));
@@ -58,7 +62,6 @@ public class SerialTransmissionModeDialog extends JDialog implements ActionListe
         g.gridx = 0; g.gridy = 0; g.gridwidth = 2;
         form.add(rowStart, g);
 
-        // Row 1: End Bytes
         rowEnd = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         rowEnd.setBackground(Color.WHITE);
         rowEnd.add(new JLabel("End of Message Bytes:"));
@@ -68,7 +71,6 @@ public class SerialTransmissionModeDialog extends JDialog implements ActionListe
         g.gridy = 1;
         form.add(rowEnd, g);
 
-        // Row 2: Line Delimiter
         rowLine = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         rowLine.setBackground(Color.WHITE);
         rowLine.add(new JLabel("Line Delimiter:"));
@@ -82,7 +84,6 @@ public class SerialTransmissionModeDialog extends JDialog implements ActionListe
         g.gridy = 2;
         form.add(rowLine, g);
 
-        // Row 3: MLLPv2
         rowMLLPv2 = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         rowMLLPv2.setBackground(Color.WHITE);
         useMLLPv2Box = new JCheckBox("Use MLLPv2");
@@ -91,7 +92,6 @@ public class SerialTransmissionModeDialog extends JDialog implements ActionListe
         g.gridy = 3;
         form.add(rowMLLPv2, g);
 
-        // Row 4: Commit ACK
         rowAck = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         rowAck.setBackground(Color.WHITE);
         rowAck.add(new JLabel("Commit ACK Bytes:"));
@@ -101,7 +101,6 @@ public class SerialTransmissionModeDialog extends JDialog implements ActionListe
         g.gridy = 4;
         form.add(rowAck, g);
 
-        // Row 5: Commit NAK
         rowNak = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         rowNak.setBackground(Color.WHITE);
         rowNak.add(new JLabel("Commit NAK Bytes:"));
@@ -111,7 +110,6 @@ public class SerialTransmissionModeDialog extends JDialog implements ActionListe
         g.gridy = 5;
         form.add(rowNak, g);
 
-        // Row 6: Max Retry
         rowRetry = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         rowRetry.setBackground(Color.WHITE);
         rowRetry.add(new JLabel("Max Retry Count:"));
@@ -123,7 +121,6 @@ public class SerialTransmissionModeDialog extends JDialog implements ActionListe
 
         add(form, BorderLayout.CENTER);
 
-        // South: Byte Abbreviations + Buttons
         JPanel south = new JPanel(new BorderLayout(4, 8));
         south.setBackground(Color.WHITE);
 
@@ -155,7 +152,6 @@ public class SerialTransmissionModeDialog extends JDialog implements ActionListe
     }
 
     private void loadConfig(SerialPortConfig config) {
-        // Show/hide rows based on mode
         rowStart.setVisible(!"RAW".equals(mode) && !"LINE".equals(mode));
         rowEnd.setVisible(!"RAW".equals(mode) && !"LINE".equals(mode));
         rowLine.setVisible("LINE".equals(mode));
@@ -164,7 +160,6 @@ public class SerialTransmissionModeDialog extends JDialog implements ActionListe
         rowNak.setVisible("MLLP".equals(mode) || "ASTM".equals(mode));
         rowRetry.setVisible("MLLP".equals(mode));
 
-        // Defaults per mode
         if ("MLLP".equals(mode)) {
             startBytesField.setText(config.getStartOfMessageBytes().isEmpty() ? "0B" : config.getStartOfMessageBytes());
             endBytesField.setText(config.getEndOfMessageBytes().isEmpty() ? "1C0D" : config.getEndOfMessageBytes());

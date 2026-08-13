@@ -6,13 +6,19 @@ import com.mirth.connect.donkey.model.channel.SourceConnectorPropertiesInterface
 import com.mirth.connect.donkey.util.DonkeyElement;
 import com.thoughtworks.xstream.annotations.XStreamAlias;
 
-import java.io.Serializable;
 import java.util.Objects;
 
+/**
+ * Serial Source Properties.
+ *
+ * CRITICAL: This class MUST exist ONLY in serial-shared.jar.
+ * Do NOT duplicate it in serial-server or serial-client.
+ *
+ * Implements SourceConnectorPropertiesInterface — REQUIRED by Mirth for source connectors.
+ * Without this interface, channel enable throws ClassCastException silently.
+ */
 @XStreamAlias("serialReceiverProperties")
-public class SerialReceiverProperties extends ConnectorProperties
-        implements Serializable, Cloneable, SourceConnectorPropertiesInterface {
-
+public class SerialReceiverProperties extends ConnectorProperties implements SourceConnectorPropertiesInterface {
     private static final long serialVersionUID = 1L;
 
     private SerialPortConfig portConfig = new SerialPortConfig();
@@ -72,10 +78,14 @@ public class SerialReceiverProperties extends ConnectorProperties
         try {
             SerialReceiverProperties copy = (SerialReceiverProperties) super.clone();
             copy.portConfig = (this.portConfig != null) ? this.portConfig.clone() : new SerialPortConfig();
-            copy.sourceConnectorProperties = new SourceConnectorProperties();
+            // Shallow copy of sourceConnectorProperties — its clone() is protected
+            // in some Mirth SDK versions and cannot be called directly.
+            // This is safe: Mirth re-populates sourceConnectorProperties from the
+            // channel XML on deployment, so the shared reference is overwritten.
+            copy.sourceConnectorProperties = this.sourceConnectorProperties;
             return copy;
         } catch (CloneNotSupportedException e) {
-            throw new AssertionError();
+            throw new AssertionError(e);
         }
     }
 
@@ -95,11 +105,9 @@ public class SerialReceiverProperties extends ConnectorProperties
 
     @Override
     public void migrate3_0_1(DonkeyElement donkeyElement) {
-
     }
 
     @Override
     public void migrate3_0_2(DonkeyElement donkeyElement) {
-
     }
 }

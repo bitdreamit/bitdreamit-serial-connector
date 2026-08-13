@@ -8,10 +8,11 @@ import java.util.List;
 /**
  * Universal frame assembler for Serial Transport.
  * Modes: BASIC (delimiter-based), MLLP, ASTM_E1381
+ *
+ * CRITICAL: This class MUST exist ONLY in serial-server.jar.
  */
 public class SerialFrameAssembler {
 
-    // Control characters
     private static final byte STX = 0x02;
     private static final byte ETX = 0x03;
     private static final byte ETB = 0x17;
@@ -28,15 +29,14 @@ public class SerialFrameAssembler {
     private final byte[] delimiter;
     private final Charset charset;
 
-    // State
-    private ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+    private final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
     private boolean inFrame = false;
 
     public SerialFrameAssembler(String mode, String delimiterStr, String charsetName) {
         this.mode = mode != null ? mode : "BASIC";
         this.charset = Charset.forName(charsetName != null ? charsetName : "UTF-8");
         if (delimiterStr != null && !delimiterStr.isEmpty()) {
-            String d = delimiterStr.replace("\\\\r", "\r").replace("\\\\n", "\n").replace("\\\\t", "\t");
+            String d = delimiterStr.replace("\\r", "\r").replace("\\n", "\n").replace("\\t", "\t");
             this.delimiter = d.getBytes(this.charset);
         } else {
             this.delimiter = new byte[]{CR, LF};
@@ -72,9 +72,6 @@ public class SerialFrameAssembler {
                 continue;
             }
             if (b == STX) {
-                if (inFrame && buffer.size() > 0) {
-                    // Incomplete previous frame, discard
-                }
                 buffer.reset();
                 buffer.write(b);
                 inFrame = true;

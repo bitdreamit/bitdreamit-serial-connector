@@ -3,6 +3,10 @@ package com.bitdreamit.mirth.labextensions.serialconnector;
 import java.io.Serializable;
 import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * Serial statistics counters.
+ * CRITICAL: This class MUST exist ONLY in serial-shared.jar.
+ */
 public class SerialStatistics implements Serializable {
     private static final long serialVersionUID = 1L;
 

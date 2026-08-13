@@ -7,6 +7,13 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * Serial port manager with connection pooling.
+ *
+ * CRITICAL: This class MUST exist ONLY in serial-shared.jar.
+ *
+ * All errors are logged via log4j (mirth.log) — NOT to hardcoded file paths.
+ */
 public class SerialPortManager {
     private static final Logger logger = Logger.getLogger(SerialPortManager.class);
     private static final Map<String, SerialPort> openPorts = new ConcurrentHashMap<>();
@@ -14,6 +21,9 @@ public class SerialPortManager {
 
     public static SerialPort getOrOpenPort(SerialPortConfig config) throws Exception {
         String portName = config.getPortName();
+        if (portName == null || portName.trim().isEmpty()) {
+            throw new Exception("SerialPortManager: portName is null/empty");
+        }
         String lockKey = portName.intern();
 
         synchronized (lockKey) {
@@ -24,41 +34,57 @@ public class SerialPortManager {
                 return port;
             }
 
-            port = SerialPort.getCommPort(portName);
-            port.setComPortParameters(
-                    config.getBaudRate(),
-                    config.getDataBits(),
-                    config.getStopBits(),
-                    config.getParity()
-            );
-            port.setFlowControl(config.getFlowControl());
-            port.setComPortTimeouts(
-                    SerialPort.TIMEOUT_READ_SEMI_BLOCKING,
-                    config.getReadTimeout(),
-                    config.getWriteTimeout()
-            );
+            try {
+                port = SerialPort.getCommPort(portName);
+            } catch (Exception e) {
+                throw new Exception("SerialPortManager: getCommPort('" + portName + "') failed: " + e.getMessage(), e);
+            }
+
+            try {
+                port.setComPortParameters(
+                        config.getBaudRate(),
+                        config.getDataBits(),
+                        config.getStopBits(),
+                        config.getParity()
+                );
+                port.setFlowControl(config.getFlowControl());
+                // Combine read semi-blocking + write blocking so BOTH timeouts are honored.
+                // NOTE: jSerialComm 2.10.4 has TIMEOUT_WRITE_BLOCKING (not TIMEOUT_WRITE_SEMI_BLOCKING).
+                port.setComPortTimeouts(
+                        SerialPort.TIMEOUT_READ_SEMI_BLOCKING | SerialPort.TIMEOUT_WRITE_BLOCKING,
+                        config.getReadTimeout(),
+                        config.getWriteTimeout()
+                );
+            } catch (Exception e) {
+                throw new Exception("SerialPortManager: failed to configure " + portName +
+                        " (baud=" + config.getBaudRate() + ",data=" + config.getDataBits() +
+                        ",stop=" + config.getStopBits() + ",parity=" + config.getParity() + "): " + e.getMessage(), e);
+            }
 
             if (config.isSendBreak()) {
-                port.openPort();
+                if (!port.openPort()) {
+                    throw new Exception("SerialPortManager: openPort() for sendBreak failed on " + portName);
+                }
                 port.setBreak();
-                Thread.sleep(config.getBreakDuration());
+                try { Thread.sleep(config.getBreakDuration()); } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                }
                 port.clearBreak();
                 port.closePort();
             }
 
             if (!port.openPort()) {
-                throw new Exception("Failed to open serial port: " + portName);
+                // Surface the most common silent-fail cause: port missing / in use / permission denied
+                throw new Exception("SerialPortManager: openPort() returned false for " + portName +
+                        " — port is missing, already in use, or permission denied");
             }
 
             if (config.isFlushOnOpen()) {
-                port.flushIOBuffers();
+                try { port.flushIOBuffers(); } catch (Throwable ignored) {}
             }
 
-            if (config.isSetDtr()) port.setDTR();
-            else port.clearDTR();
-
-            if (config.isSetRts()) port.setRTS();
-            else port.clearRTS();
+            if (config.isSetDtr()) port.setDTR();  else port.clearDTR();
+            if (config.isSetRts()) port.setRTS();  else port.clearRTS();
 
             if (config.isWaitCts() && !port.getCTS()) {
                 waitForSignal(port, config.getSignalTimeout(), "CTS", SerialPort::getCTS);
@@ -86,12 +112,16 @@ public class SerialPortManager {
         long start = System.currentTimeMillis();
         while (System.currentTimeMillis() - start < timeout) {
             if (check.check(port)) return;
-            Thread.sleep(50);
+            try { Thread.sleep(50); } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                break;
+            }
         }
         throw new Exception("Timeout waiting for " + name + " on " + port.getSystemPortName());
     }
 
     public static void releasePort(String portName, boolean forceClose) {
+        if (portName == null) return;
         String lockKey = portName.intern();
         synchronized (lockKey) {
             AtomicInteger refCount = portRefCount.get(portName);
@@ -102,6 +132,7 @@ public class SerialPortManager {
                 SerialPort port = openPorts.remove(portName);
                 portRefCount.remove(portName);
                 if (port != null && port.isOpen()) {
+                    try { port.flushIOBuffers(); } catch (Throwable ignored) {}
                     port.closePort();
                     logger.info("Closed serial port: " + portName);
                 }

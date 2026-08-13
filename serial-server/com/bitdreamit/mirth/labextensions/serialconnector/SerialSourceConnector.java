@@ -17,20 +17,25 @@ import com.thoughtworks.xstream.security.WildcardTypePermission;
 import org.apache.log4j.Logger;
 
 import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileWriter;
-import java.io.PrintWriter;
 import java.nio.charset.Charset;
-import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
+/**
+ * Serial Source Connector — reads from RS-232/RS-485 ports.
+ *
+ * CRITICAL: This class MUST exist ONLY in serial-server.jar.
+ * It must NOT contain SerialReceiverProperties or SerialDispatcherProperties —
+ * those live in serial-shared.jar.
+ *
+ * All diagnostic logging goes through log4j (mirth.log).
+ * No hardcoded file paths.
+ */
 public class SerialSourceConnector extends SourceConnector {
     private static final Logger logger = Logger.getLogger(SerialSourceConnector.class);
     private EventController eventController = ControllerFactory.getFactory().createEventController();
 
-    // Register XStream permission ONCE when this class is loaded by Mirth
     static {
         registerXStreamPermission();
     }
@@ -41,38 +46,62 @@ public class SerialSourceConnector extends SourceConnector {
             if (xstream != null) {
                 xstream.addPermission(new WildcardTypePermission(
                         new String[]{"com.bitdreamit.mirth.labextensions.serialconnector.**"}));
-                logToFile("SerialSourceConnector: XStream permission registered.");
-                logger.info("SerialSourceConnector: XStream permission registered.");
+                xstream.processAnnotations(SerialReceiverProperties.class);
+                xstream.processAnnotations(SerialPortConfig.class);
+                logger.info("SerialSourceConnector: XStream permission + annotations registered.");
             } else {
-                logToFile("SerialSourceConnector: XStream instance not found.");
+                logger.error("SerialSourceConnector: XStream instance is NULL — " +
+                             "channel deserialization will fail with ForbiddenClassException!");
             }
         } catch (Throwable t) {
-            logToFile("SerialSourceConnector: ERROR registering permission: " + t.getMessage());
-            logger.error("SerialSourceConnector: Failed to register XStream permission", t);
+            logger.error("SerialSourceConnector: FAILED to register XStream permission", t);
         }
     }
 
-    private static XStream findXStream() throws Exception {
-        ObjectXMLSerializer serializer = ObjectXMLSerializer.getInstance();
+    @SuppressWarnings("unchecked")
+    private static XStream findXStream() {
         try {
-            java.lang.reflect.Method m = ObjectXMLSerializer.class.getMethod("getXStream");
-            Object val = m.invoke(serializer);
-            if (val != null) return (XStream) val;
-        } catch (NoSuchMethodException ignored) {}
-        for (java.lang.reflect.Field f : ObjectXMLSerializer.class.getDeclaredFields()) {
-            if (XStream.class.isAssignableFrom(f.getType())) {
-                f.setAccessible(true);
-                Object val = f.get(serializer);
-                if (val != null) return (XStream) val;
+            ObjectXMLSerializer serializer = ObjectXMLSerializer.getInstance();
+            if (serializer == null) return null;
+
+            try {
+                java.lang.reflect.Method m = ObjectXMLSerializer.class.getMethod("getXStream");
+                Object val = m.invoke(serializer);
+                if (val instanceof XStream) return (XStream) val;
+            } catch (NoSuchMethodException ignored) {
+            } catch (Exception e) {
+                logger.warn("SerialSourceConnector: getXStream() threw: " + e.getMessage());
             }
+
+            XStream found = findXStreamField(serializer, serializer.getClass());
+            if (found != null) return found;
+
+            for (java.lang.reflect.Field f : serializer.getClass().getDeclaredFields()) {
+                try {
+                    f.setAccessible(true);
+                    Object val = f.get(serializer);
+                    if (val != null) {
+                        XStream inner = findXStreamField(val, val.getClass());
+                        if (inner != null) return inner;
+                    }
+                } catch (Exception ignored) {}
+            }
+            return null;
+        } catch (Throwable t) {
+            logger.error("SerialSourceConnector: error finding XStream: " + t.getMessage(), t);
+            return null;
         }
-        Class<?> clazz = ObjectXMLSerializer.class.getSuperclass();
+    }
+
+    private static XStream findXStreamField(Object target, Class<?> clazz) {
         while (clazz != null && clazz != Object.class) {
             for (java.lang.reflect.Field f : clazz.getDeclaredFields()) {
                 if (XStream.class.isAssignableFrom(f.getType())) {
-                    f.setAccessible(true);
-                    Object val = f.get(serializer);
-                    if (val != null) return (XStream) val;
+                    try {
+                        f.setAccessible(true);
+                        Object val = f.get(target);
+                        if (val instanceof XStream) return (XStream) val;
+                    } catch (Exception ignored) {}
                 }
             }
             clazz = clazz.getSuperclass();
@@ -80,18 +109,6 @@ public class SerialSourceConnector extends SourceConnector {
         return null;
     }
 
-    private static void logToFile(String msg) {
-        try {
-            File f = new File("C:/Program Files/Mirth Connect/logs/serial-xstream.log");
-            f.getParentFile().mkdirs();
-            try (FileWriter fw = new FileWriter(f, true);
-                 PrintWriter pw = new PrintWriter(fw)) {
-                pw.println(LocalDateTime.now() + " " + msg);
-            }
-        } catch (Exception ignored) {}
-    }
-
-    // ... rest of your existing SerialSourceConnector code ...
     private SerialReceiverProperties connectorProperties;
     private SerialPort serialPort;
     private AtomicBoolean running = new AtomicBoolean(false);
@@ -101,7 +118,21 @@ public class SerialSourceConnector extends SourceConnector {
 
     @Override
     public void onDeploy() {
-        this.connectorProperties = (SerialReceiverProperties) getConnectorProperties();
+        Object raw = getConnectorProperties();
+        if (raw == null) {
+            throw new IllegalStateException("SerialSourceConnector.onDeploy: connectorProperties is null — " +
+                "Mirth did not provide properties. Check that source.xml sharedClassName matches " +
+                "the class in serial-shared.jar.");
+        }
+        if (!(raw instanceof SerialReceiverProperties)) {
+            throw new IllegalStateException(
+                "SerialSourceConnector.onDeploy: expected SerialReceiverProperties but got " +
+                raw.getClass().getName() + ". This means the wrong class is being loaded — " +
+                "clear <mirth>/extensions/.cache/ and restart Mirth.");
+        }
+        this.connectorProperties = (SerialReceiverProperties) raw;
+        logger.info("SerialSourceConnector.onDeploy: properties loaded for channel " + getChannelId() +
+                    ", port=" + connectorProperties.getPortConfig().getPortName());
     }
 
     @Override
@@ -111,12 +142,20 @@ public class SerialSourceConnector extends SourceConnector {
     public void onStart() {
         running.set(true);
         try {
+            if (connectorProperties == null) {
+                throw new IllegalStateException("connectorProperties is null in onStart() — onDeploy() failed.");
+            }
+            logger.info("SerialSourceConnector.onStart: starting channel " + getChannelId() +
+                        " on port " + connectorProperties.getPortConfig().getPortName());
             openPort();
             startReader();
             startHealthMonitor();
-        } catch (Exception e) {
+        } catch (Throwable t) {
             running.set(false);
-            throw new RuntimeException("Failed to start serial source: " + e.getMessage(), e);
+            logger.error("SerialSourceConnector.onStart FAILED for channel " + getChannelId() +
+                         ": " + t.getClass().getName() + ": " + t.getMessage(), t);
+            if (t instanceof RuntimeException) throw (RuntimeException) t;
+            throw new RuntimeException("Failed to start serial source: " + t.getMessage(), t);
         }
     }
 
@@ -196,11 +235,9 @@ public class SerialSourceConnector extends SourceConnector {
                 if (bytesRead > 0) {
                     byte[] data = new byte[bytesRead];
                     System.arraycopy(buffer, 0, data, 0, bytesRead);
-
                     if (logger.isDebugEnabled()) {
                         logger.debug("Serial read " + bytesRead + " bytes from " + config.getPortName());
                     }
-
                     processBytes(data, config);
                 }
             } catch (InterruptedException e) {
@@ -217,35 +254,22 @@ public class SerialSourceConnector extends SourceConnector {
 
     private void processBytes(byte[] data, SerialPortConfig config) throws Exception {
         String mode = config.getTransmissionMode();
-
-        switch (mode) {
-            case "RAW":
-                dispatchRaw(data, config);
-                break;
-            case "LINE":
-                processLineMode(data, config);
-                break;
-            case "FRAME":
-                processFrameMode(data, config);
-                break;
-            case "MLLP":
-                processMllpMode(data, config);
-                break;
-            case "ASTM":
-                processAstmMode(data, config);
-                break;
-            default:
-                dispatchRaw(data, config);
+        switch (mode == null ? "RAW" : mode.toUpperCase()) {
+            case "RAW":           dispatchRaw(data, config); break;
+            case "LINE":          processLineMode(data, config); break;
+            case "FRAME":         processFrameMode(data, config); break;
+            case "MLLP":          processMllpMode(data, config); break;
+            case "ASTM":          processAstmMode(data, config); break;
+            case "BASIC":         processLineMode(data, config); break;
+            case "ASTM_E1381":    processAstmMode(data, config); break;
+            default:              dispatchRaw(data, config);
         }
     }
 
     private void dispatchRaw(byte[] data, SerialPortConfig config) {
         String payload = bytesToPayload(data, config);
-        try {
-            dispatchRawMessage(new RawMessage(payload));
-        } catch (ChannelException e) {
-            logger.error("Failed to dispatch raw message to channel", e);
-        }
+        try { dispatchRawMessage(new RawMessage(payload)); }
+        catch (ChannelException e) { logger.error("Failed to dispatch raw message", e); }
     }
 
     private void processLineMode(byte[] data, SerialPortConfig config) {
@@ -254,20 +278,15 @@ public class SerialSourceConnector extends SourceConnector {
         byte[] buffer = frameBuffer.toByteArray();
         Charset cs = Charset.forName(config.getCharset());
         String text = new String(buffer, cs);
-
         int idx;
         while ((idx = text.indexOf(delimiter)) >= 0) {
             String line = text.substring(0, idx);
             text = text.substring(idx + delimiter.length());
             if (!line.isEmpty()) {
-                try {
-                    dispatchRawMessage(new RawMessage(line));
-                } catch (ChannelException e) {
-                    logger.error("Failed to dispatch line message", e);
-                }
+                try { dispatchRawMessage(new RawMessage(line)); }
+                catch (ChannelException e) { logger.error("Failed to dispatch line message", e); }
             }
         }
-
         frameBuffer.reset();
         if (!text.isEmpty()) {
             byte[] remaining = text.getBytes(cs);
@@ -279,29 +298,19 @@ public class SerialSourceConnector extends SourceConnector {
         frameBuffer.write(data, 0, data.length);
         byte[] start = parseHexString(config.getStartOfMessageBytes());
         byte[] end = parseHexString(config.getEndOfMessageBytes());
-
-        if (start.length == 0 || end.length == 0) {
-            dispatchRaw(data, config);
-            return;
-        }
-
+        if (start.length == 0 || end.length == 0) { dispatchRaw(data, config); return; }
         byte[] buffer = frameBuffer.toByteArray();
         int searchStart = 0;
-
         while (true) {
             int frameStart = indexOf(buffer, start, searchStart);
             if (frameStart < 0) break;
-
             int payloadStart = frameStart + start.length;
             int frameEnd = indexOf(buffer, end, payloadStart);
             if (frameEnd < 0) break;
-
             byte[] payload = Arrays.copyOfRange(buffer, payloadStart, frameEnd);
             dispatchRaw(payload, config);
-
             searchStart = frameEnd + end.length;
         }
-
         if (searchStart > 0) {
             byte[] remaining = Arrays.copyOfRange(buffer, searchStart, buffer.length);
             frameBuffer.reset();
@@ -315,29 +324,22 @@ public class SerialSourceConnector extends SourceConnector {
         byte[] end = parseHexString(config.getEndOfMessageBytes());
         if (start.length == 0) start = new byte[]{0x0B};
         if (end.length == 0) end = new byte[]{0x1C, 0x0D};
-
         byte[] buffer = frameBuffer.toByteArray();
         int searchStart = 0;
-
         while (true) {
             int startIdx = indexOf(buffer, start, searchStart);
             if (startIdx < 0) break;
-
             int payloadStart = startIdx + start.length;
             int endIdx = indexOf(buffer, end, payloadStart);
             if (endIdx < 0) break;
-
             byte[] payload = Arrays.copyOfRange(buffer, payloadStart, endIdx);
             dispatchRaw(payload, config);
-
             if (config.isUseMLLPv2()) {
                 byte[] ack = parseHexString(config.getCommitAckBytes());
                 if (ack.length > 0) serialPort.writeBytes(ack, ack.length);
             }
-
             searchStart = endIdx + end.length;
         }
-
         if (searchStart > 0) {
             byte[] remaining = Arrays.copyOfRange(buffer, searchStart, buffer.length);
             frameBuffer.reset();
@@ -355,10 +357,8 @@ public class SerialSourceConnector extends SourceConnector {
         if (end.length == 0) end = new byte[]{0x03};
         if (ackBytes.length == 0) ackBytes = new byte[]{0x06};
         if (nakBytes.length == 0) nakBytes = new byte[]{0x15};
-
         byte[] buffer = frameBuffer.toByteArray();
         int searchStart = 0;
-
         while (true) {
             int enqIdx = indexOfByte(buffer, (byte) 0x05, searchStart);
             if (enqIdx >= 0) {
@@ -366,26 +366,20 @@ public class SerialSourceConnector extends SourceConnector {
                 searchStart = enqIdx + 1;
                 continue;
             }
-
             int stxIdx = indexOf(buffer, start, searchStart);
             if (stxIdx < 0) break;
-
             int payloadStart = stxIdx + start.length;
             int etxIdx = indexOf(buffer, end, payloadStart);
             if (etxIdx < 0) break;
-
             if (etxIdx + 4 >= buffer.length) break;
-
             byte[] payload = Arrays.copyOfRange(buffer, payloadStart, etxIdx);
             byte chk1 = buffer[etxIdx + end.length];
             byte chk2 = buffer[etxIdx + end.length + 1];
-
             if (buffer[etxIdx + end.length + 2] == 0x0D && buffer[etxIdx + end.length + 3] == 0x0A) {
                 int sum = 0;
                 for (byte b : payload) sum = (sum + b) & 0xFF;
                 String expectedChk = String.format("%02X", sum).substring(0, 2);
                 String actualChk = String.format("%02c%02c", (char) chk1, (char) chk2);
-
                 if (expectedChk.equals(actualChk)) {
                     dispatchRaw(payload, config);
                     serialPort.writeBytes(ackBytes, ackBytes.length);
@@ -393,13 +387,11 @@ public class SerialSourceConnector extends SourceConnector {
                     logger.warn("ASTM checksum mismatch on " + config.getPortName());
                     serialPort.writeBytes(nakBytes, nakBytes.length);
                 }
-
                 searchStart = etxIdx + end.length + 4;
             } else {
                 searchStart = stxIdx + 1;
             }
         }
-
         if (searchStart > 0) {
             byte[] remaining = Arrays.copyOfRange(buffer, searchStart, buffer.length);
             frameBuffer.reset();
@@ -408,11 +400,8 @@ public class SerialSourceConnector extends SourceConnector {
     }
 
     private String bytesToPayload(byte[] data, SerialPortConfig config) {
-        if (config.isBinaryMode()) {
-            return java.util.Base64.getEncoder().encodeToString(data);
-        } else {
-            return new String(data, Charset.forName(config.getCharset()));
-        }
+        if (config.isBinaryMode()) return java.util.Base64.getEncoder().encodeToString(data);
+        return new String(data, Charset.forName(config.getCharset()));
     }
 
     private String unescapeDelimiter(String delim) {
@@ -453,18 +442,20 @@ public class SerialSourceConnector extends SourceConnector {
         int maxReconnect = config.getMaxReconnects();
         int reconnectDelay = config.getReconnectDelay();
         int reconnectAttempts = 0;
-
         while (running.get()) {
             try {
                 Thread.sleep(reconnectDelay);
                 if (!running.get()) break;
-
-                if (serialPort == null || !serialPort.isOpen()) {
+                boolean portDown = (serialPort == null || !serialPort.isOpen());
+                boolean readerDead = (readerThread.get() == null || !readerThread.get().isAlive());
+                if (portDown || readerDead) {
                     if (reconnectAttempts < maxReconnect) {
-                        logger.warn("Reconnecting... (" + (reconnectAttempts + 1) + "/" + maxReconnect + ")");
+                        logger.warn("Reconnecting... (" + (reconnectAttempts + 1) + "/" + maxReconnect +
+                                    ") portDown=" + portDown + " readerDead=" + readerDead);
                         try {
                             closePort();
                             openPort();
+                            stopReader();
                             startReader();
                             reconnectAttempts = 0;
                         } catch (Exception e) {

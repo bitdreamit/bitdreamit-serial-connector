@@ -1,35 +1,31 @@
 package com.bitdreamit.mirth.labextensions.serialconnector;
 
 import com.mirth.connect.model.converters.ObjectXMLSerializer;
-import com.mirth.connect.plugins.ServerPlugin;
 import com.thoughtworks.xstream.XStream;
 import com.thoughtworks.xstream.security.WildcardTypePermission;
 import org.apache.log4j.Logger;
 
 /**
- * Serial Connector Server Plugin.
+ * Client-side initializer — loaded at Mirth Administrator startup.
  *
- * CRITICAL: This class MUST exist ONLY in serial-server.jar.
+ * This class is declared in plugin.xml under <clientClasses> so that Mirth
+ * loads it via Class.forName() at startup. The static block then:
+ *   1. Registers XStream security permission for our package
+ *   2. Processes @XStreamAlias annotations for ALL plugin classes
  *
- * ROOT CAUSE OF ORIGINAL SILENT-ENABLE BUG:
- * The old findXStream() used reflection that returned null on Mirth 4.x.
- * When null, the error was written ONLY to a hardcoded
- * "C:/Program Files/Mirth Connect/logs/serial-plugin.log" path.
- * On Linux/non-default Windows, that path is unreachable, and the
- * catch(Exception ignored) swallowed the file-write error.
- * Result: XStream permission was NEVER registered, and channel enable
- * failed with ForbiddenClassException — COMPLETELY SILENTLY.
+ * Without this, the Mirth Administrator client gets CannotResolveClassException
+ * when trying to deserialize <serialReceiverProperties> or <serialDispatcherProperties>
+ * tags in the channel summary XML — because the alias mapping hasn't been registered
+ * until the settings panel is loaded (which is too late: getChannelSummary() runs
+ * at startup, before any channel editor is opened).
  *
- * FIX:
- *  - ALL logging goes through log4j (mirth.log) — success AND failure.
- *  - Enhanced findXStream() with 4 strategies including wrapper-object search.
- *  - Explicitly processes @XStreamAlias annotations.
- *  - No hardcoded file paths.
+ * CRITICAL: This class MUST exist ONLY in serial-client.jar.
+ * It MUST be listed in plugin.xml <clientClasses>.
  */
-public class SerialServerPlugin implements ServerPlugin {
-    private static final Logger logger = Logger.getLogger(SerialServerPlugin.class);
+public class SerialClientInitializer {
+    private static final Logger logger = Logger.getLogger(SerialClientInitializer.class);
 
-    /** Classes that XStream must be allowed to deserialize. */
+    /** All classes that XStream must be able to deserialize on the client side. */
     private static final Class<?>[] PLUGIN_CLASSES = {
         SerialReceiverProperties.class,
         SerialDispatcherProperties.class,
@@ -55,47 +51,43 @@ public class SerialServerPlugin implements ServerPlugin {
                 // Register wildcard permission for our entire package
                 xstream.addPermission(new WildcardTypePermission(PERMISSION_PATTERNS));
 
-                // Process @XStreamAlias annotations so XStream knows the XML tag names
+                // Process @XStreamAlias annotations for ALL plugin classes.
+                // This is the critical step: without it, XStream doesn't know that
+                // <serialReceiverProperties> maps to SerialReceiverProperties.class,
+                // and channel summary deserialization fails with
+                // CannotResolveClassException.
                 for (Class<?> clazz : PLUGIN_CLASSES) {
                     try {
                         xstream.processAnnotations(clazz);
                     } catch (Throwable t) {
-                        logger.warn("SerialServerPlugin: could not process annotations for " +
+                        logger.warn("SerialClientInitializer: could not process annotations for " +
                                     clazz.getName() + ": " + t.getMessage());
                     }
                 }
 
-                logger.info("SerialServerPlugin: XStream permission registered + annotations processed for " +
+                logger.info("SerialClientInitializer: XStream permission registered + annotations processed for " +
                             PLUGIN_CLASSES.length + " classes.");
             } else {
-                // CRITICAL: this error MUST go to mirth.log (log4j), not a hardcoded file
-                logger.error("SerialServerPlugin: XStream instance is NULL — " +
-                             "channel enable WILL FAIL with ForbiddenClassException! " +
-                             "ObjectXMLSerializer internal field layout may have changed in this Mirth version. " +
-                             "Check that you are using a compatible Mirth version (3.8.0 - 4.7.2).");
+                logger.error("SerialClientInitializer: XStream instance is NULL — " +
+                             "channel summary deserialization will fail with CannotResolveClassException! " +
+                             "ObjectXMLSerializer may not be initialized yet.");
             }
         } catch (Throwable t) {
-            // CRITICAL: log to mirth.log (log4j), NOT to a hardcoded file
-            logger.error("SerialServerPlugin: FAILED to register XStream permission: " +
+            logger.error("SerialClientInitializer: FAILED to register XStream permission: " +
                          t.getClass().getName() + ": " + t.getMessage(), t);
         }
     }
 
     /**
      * Find the XStream instance used by Mirth's ObjectXMLSerializer.
-     *
-     * Tries multiple strategies in order:
-     *   1. Public getXStream() method (exists in some Mirth versions)
-     *   2. Field reflection on ObjectXMLSerializer's class hierarchy
-     *   3. Field reflection on wrapper objects inside the serializer
-     *   4. Walk all fields one level deep looking for an XStream instance
+     * Same multi-strategy approach as SerialServerPlugin.
      */
     @SuppressWarnings("unchecked")
     private static XStream findXStream() {
         try {
             ObjectXMLSerializer serializer = ObjectXMLSerializer.getInstance();
             if (serializer == null) {
-                logger.error("SerialServerPlugin: ObjectXMLSerializer.getInstance() returned null");
+                logger.error("SerialClientInitializer: ObjectXMLSerializer.getInstance() returned null");
                 return null;
             }
 
@@ -104,19 +96,18 @@ public class SerialServerPlugin implements ServerPlugin {
                 java.lang.reflect.Method m = ObjectXMLSerializer.class.getMethod("getXStream");
                 Object val = m.invoke(serializer);
                 if (val instanceof XStream) {
-                    logger.info("SerialServerPlugin: found XStream via getXStream() method");
+                    logger.info("SerialClientInitializer: found XStream via getXStream() method");
                     return (XStream) val;
                 }
             } catch (NoSuchMethodException ignored) {
-                // Method doesn't exist in this Mirth version — try field reflection
             } catch (Exception e) {
-                logger.warn("SerialServerPlugin: getXStream() method threw: " + e.getMessage());
+                logger.warn("SerialClientInitializer: getXStream() method threw: " + e.getMessage());
             }
 
             // Strategy 2: field reflection on the serializer's class hierarchy
             XStream found = findXStreamField(serializer, serializer.getClass());
             if (found != null) {
-                logger.info("SerialServerPlugin: found XStream via field reflection on " +
+                logger.info("SerialClientInitializer: found XStream via field reflection on " +
                             serializer.getClass().getName());
                 return found;
             }
@@ -129,7 +120,7 @@ public class SerialServerPlugin implements ServerPlugin {
                     if (val != null) {
                         XStream inner = findXStreamField(val, val.getClass());
                         if (inner != null) {
-                            logger.info("SerialServerPlugin: found XStream inside field '" +
+                            logger.info("SerialClientInitializer: found XStream inside field '" +
                                         f.getName() + "' of " + serializer.getClass().getName());
                             return inner;
                         }
@@ -137,13 +128,12 @@ public class SerialServerPlugin implements ServerPlugin {
                 } catch (Exception ignored) {}
             }
 
-            // If we got here, we couldn't find the XStream instance
-            logger.error("SerialServerPlugin: could not find XStream instance in ObjectXMLSerializer. " +
+            logger.error("SerialClientInitializer: could not find XStream instance in ObjectXMLSerializer. " +
                          "Serializer class: " + serializer.getClass().getName());
             return null;
 
         } catch (Throwable t) {
-            logger.error("SerialServerPlugin: error finding XStream: " + t.getMessage(), t);
+            logger.error("SerialClientInitializer: error finding XStream: " + t.getMessage(), t);
             return null;
         }
     }
@@ -165,20 +155,5 @@ public class SerialServerPlugin implements ServerPlugin {
             clazz = clazz.getSuperclass();
         }
         return null;
-    }
-
-    @Override
-    public String getPluginPointName() {
-        return "Serial Connector";
-    }
-
-    @Override
-    public void start() {
-        logger.info("SerialServerPlugin: start() called — plugin is active.");
-    }
-
-    @Override
-    public void stop() {
-        logger.info("SerialServerPlugin: stop() called.");
     }
 }
