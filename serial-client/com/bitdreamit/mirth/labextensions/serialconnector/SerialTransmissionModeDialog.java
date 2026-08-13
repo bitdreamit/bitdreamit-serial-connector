@@ -6,14 +6,10 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
 /**
- * Transmission Mode Settings Dialog — redesigned to match Mirth's TCP Transmission Mode UI style.
+ * Transmission Mode Settings Dialog — matches Mirth's TCP Transmission Mode UI style.
  *
- * Features:
- *  - Titled bordered sections (like Mirth's TCP Transmission Mode dialog)
- *  - Mode description panel at top showing what the selected mode does
- *  - Compact GridBagLayout with consistent insets
- *  - Sample frame preview showing how bytes will be framed
- *  - White background, Mirth-style layout
+ * Strict two-column grid: Label column (fixed width, right-aligned) + Input column (left-aligned).
+ * All input fields start at the SAME X position. Section headers have separator lines.
  *
  * CRITICAL: This class MUST exist ONLY in serial-client.jar.
  */
@@ -21,7 +17,6 @@ public class SerialTransmissionModeDialog extends JDialog implements ActionListe
     private boolean saved = false;
     private String mode;
 
-    // Fields
     private JTextField startBytesField;
     private JTextField endBytesField;
     private JTextField lineDelimiterField;
@@ -31,32 +26,88 @@ public class SerialTransmissionModeDialog extends JDialog implements ActionListe
     private JTextField maxRetryField;
     private JComboBox<String> byteAbbrevBox;
 
-    // Section panels (for show/hide based on mode)
     private JPanel framingSection;
     private JPanel lineModeSection;
     private JPanel mllpSection;
     private JPanel ackNakSection;
     private JPanel retrySection;
-
-    // Description label
+    private JLabel framingHeader;
+    private JLabel lineHeader;
+    private JLabel mllpHeader;
+    private JLabel ackNakHeader;
+    private JLabel retryHeader;
     private JLabel descriptionLabel;
     private JLabel sampleFrameLabel;
 
-    // Colors matching Mirth's theme
-    private static final Color BORDER_COLOR = new Color(180, 180, 180);
-    private static final Color LABEL_COLOR = new Color(60, 60, 60);
-    private static final Color DESCRIPTION_BG = new Color(245, 248, 252);
-    private static final Color SAMPLE_BG = new Color(250, 250, 245);
+    private static final int LABEL_WIDTH = 160;
+    private static final int FIELD_GAP = 6;
+    private static final int ROW_GAP = 4;
+    private static final int SECTION_GAP = 8;
+    private static final Color LABEL_COLOR = new Color(51, 51, 51);
+    private static final Color SEP_COLOR = new Color(200, 200, 200);
+    private static final Color DESC_BG = new Color(245, 248, 252);
 
     public SerialTransmissionModeDialog(Window parent, String mode, SerialPortConfig config) {
         super(parent, "Transmission Mode Settings", ModalityType.APPLICATION_MODAL);
         this.mode = mode;
-        setResizable(false);
         initComponents();
         loadConfig(config);
         updateModeDisplay();
         pack();
         setLocationRelativeTo(parent);
+    }
+
+    private JLabel mkLabel(String text) {
+        JLabel label = new JLabel(text);
+        label.setForeground(LABEL_COLOR);
+        label.setHorizontalAlignment(SwingConstants.RIGHT);
+        label.setPreferredSize(new Dimension(LABEL_WIDTH, 22));
+        label.setMinimumSize(new Dimension(LABEL_WIDTH, 22));
+        return label;
+    }
+
+    private GridBagConstraints labelGbc(int row) {
+        GridBagConstraints g = new GridBagConstraints();
+        g.gridx = 0; g.gridy = row;
+        g.anchor = GridBagConstraints.NORTHEAST;
+        g.fill = GridBagConstraints.NONE;
+        g.insets = new Insets(0, 0, ROW_GAP, FIELD_GAP);
+        return g;
+    }
+
+    private GridBagConstraints fieldGbc(int row) {
+        GridBagConstraints g = new GridBagConstraints();
+        g.gridx = 1; g.gridy = row;
+        g.anchor = GridBagConstraints.NORTHWEST;
+        g.fill = GridBagConstraints.HORIZONTAL;
+        g.weightx = 1.0;
+        g.insets = new Insets(0, 0, ROW_GAP, 0);
+        return g;
+    }
+
+    private void addRow(JPanel parent, GridBagLayout layout, String labelText, JComponent field, int row) {
+        JLabel label = mkLabel(labelText);
+        GridBagConstraints lg = labelGbc(row);
+        GridBagConstraints fg = fieldGbc(row);
+        layout.setConstraints(label, lg);
+        parent.add(label);
+
+        JPanel fieldPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        fieldPanel.setBackground(Color.WHITE);
+        fieldPanel.setOpaque(true);
+        fieldPanel.add(field);
+        layout.setConstraints(fieldPanel, fg);
+        parent.add(fieldPanel);
+    }
+
+    private JLabel createSectionHeader(String title) {
+        JLabel header = new JLabel(title);
+        header.setFont(header.getFont().deriveFont(Font.BOLD, 12f));
+        header.setForeground(LABEL_COLOR);
+        header.setBackground(Color.WHITE);
+        header.setOpaque(true);
+        header.setBorder(BorderFactory.createEmptyBorder(SECTION_GAP, 0, 2, 0));
+        return header;
     }
 
     private void initComponents() {
@@ -65,9 +116,9 @@ public class SerialTransmissionModeDialog extends JDialog implements ActionListe
 
         // ===== Top: Description panel =====
         JPanel topPanel = new JPanel(new BorderLayout(4, 4));
-        topPanel.setBackground(DESCRIPTION_BG);
+        topPanel.setBackground(DESC_BG);
         topPanel.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(BORDER_COLOR, 1),
+                BorderFactory.createLineBorder(SEP_COLOR, 1),
                 BorderFactory.createEmptyBorder(8, 10, 8, 10)
         ));
 
@@ -81,9 +132,8 @@ public class SerialTransmissionModeDialog extends JDialog implements ActionListe
         descriptionLabel.setFont(descriptionLabel.getFont().deriveFont(Font.PLAIN, 11f));
         topPanel.add(descriptionLabel, BorderLayout.CENTER);
 
-        // Sample frame preview
         JPanel samplePanel = new JPanel(new BorderLayout(4, 2));
-        samplePanel.setBackground(SAMPLE_BG);
+        samplePanel.setBackground(new Color(250, 250, 245));
         samplePanel.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(new Color(200, 200, 180), 1),
                 BorderFactory.createEmptyBorder(4, 6, 4, 6)
@@ -96,58 +146,122 @@ public class SerialTransmissionModeDialog extends JDialog implements ActionListe
         sampleFrameLabel.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
         sampleFrameLabel.setForeground(new Color(80, 80, 80));
         samplePanel.add(sampleFrameLabel, BorderLayout.CENTER);
-
         topPanel.add(samplePanel, BorderLayout.SOUTH);
 
         add(topPanel, BorderLayout.NORTH);
 
-        // ===== Center: Settings sections =====
+        // ===== Center: Settings (strict two-column grid) =====
         JPanel centerPanel = new JPanel();
-        centerPanel.setLayout(new GridBagLayout());
+        GridBagLayout layout = new GridBagLayout();
+        centerPanel.setLayout(layout);
         centerPanel.setBackground(Color.WHITE);
-
-        GridBagConstraints g = new GridBagConstraints();
-        g.anchor = GridBagConstraints.NORTHWEST;
-        g.fill = GridBagConstraints.HORIZONTAL;
-        g.weightx = 1.0;
-        g.weighty = 0.0;
+        centerPanel.setOpaque(true);
 
         int row = 0;
 
-        // Framing section (Start/End bytes)
-        g.gridy = row++; g.insets = new Insets(6, 0, 2, 0);
-        centerPanel.add(createSectionHeader("Message Framing"), g);
-        framingSection = createFramingSection();
-        g.gridy = row++; g.insets = new Insets(0, 0, 6, 0);
-        centerPanel.add(framingSection, g);
+        // --- Framing section ---
+        GridBagConstraints hg = new GridBagConstraints();
+        hg.gridwidth = 2; hg.gridx = 0; hg.gridy = row++;
+        hg.fill = GridBagConstraints.HORIZONTAL; hg.weightx = 1.0;
+        framingHeader = createSectionHeader("Message Framing");
+        layout.setConstraints(framingHeader, hg);
+        centerPanel.add(framingHeader);
+        // Separator
+        JSeparator sep1 = new JSeparator(SwingConstants.HORIZONTAL);
+        sep1.setForeground(SEP_COLOR);
+        GridBagConstraints sep1g = new GridBagConstraints();
+        sep1g.gridwidth = 2; sep1g.gridx = 0; sep1g.gridy = row++;
+        sep1g.fill = GridBagConstraints.HORIZONTAL; sep1g.weightx = 1.0;
+        layout.setConstraints(sep1, sep1g);
+        centerPanel.add(sep1);
 
-        // Line mode section (delimiter)
-        g.gridy = row++; g.insets = new Insets(6, 0, 2, 0);
-        centerPanel.add(createSectionHeader("Line Delimiter"), g);
-        lineModeSection = createLineModeSection();
-        g.gridy = row++; g.insets = new Insets(0, 0, 6, 0);
-        centerPanel.add(lineModeSection, g);
+        startBytesField = new JTextField(14);
+        startBytesField.setPreferredSize(new Dimension(140, 22));
+        addRow(centerPanel, layout, "Start of Message (hex):", startBytesField, row++);
 
-        // MLLP section
-        g.gridy = row++; g.insets = new Insets(6, 0, 2, 0);
-        centerPanel.add(createSectionHeader("MLLP Options"), g);
-        mllpSection = createMllpSection();
-        g.gridy = row++; g.insets = new Insets(0, 0, 6, 0);
-        centerPanel.add(mllpSection, g);
+        endBytesField = new JTextField(14);
+        endBytesField.setPreferredSize(new Dimension(140, 22));
+        addRow(centerPanel, layout, "End of Message (hex):", endBytesField, row++);
 
-        // ACK/NAK section
-        g.gridy = row++; g.insets = new Insets(6, 0, 2, 0);
-        centerPanel.add(createSectionHeader("ACK / NAK Bytes"), g);
-        ackNakSection = createAckNakSection();
-        g.gridy = row++; g.insets = new Insets(0, 0, 6, 0);
-        centerPanel.add(ackNakSection, g);
+        // --- Line delimiter section ---
+        hg = new GridBagConstraints();
+        hg.gridwidth = 2; hg.gridx = 0; hg.gridy = row++;
+        hg.fill = GridBagConstraints.HORIZONTAL; hg.weightx = 1.0;
+        lineHeader = createSectionHeader("Line Delimiter");
+        layout.setConstraints(lineHeader, hg);
+        centerPanel.add(lineHeader);
+        JSeparator sep2 = new JSeparator(SwingConstants.HORIZONTAL);
+        sep2.setForeground(SEP_COLOR);
+        GridBagConstraints sep2g = new GridBagConstraints();
+        sep2g.gridwidth = 2; sep2g.gridx = 0; sep2g.gridy = row++;
+        sep2g.fill = GridBagConstraints.HORIZONTAL; sep2g.weightx = 1.0;
+        layout.setConstraints(sep2, sep2g);
+        centerPanel.add(sep2);
 
-        // Retry section
-        g.gridy = row++; g.insets = new Insets(6, 0, 2, 0);
-        centerPanel.add(createSectionHeader("Retry Options"), g);
-        retrySection = createRetrySection();
-        g.gridy = row++; g.insets = new Insets(0, 0, 6, 0);
-        centerPanel.add(retrySection, g);
+        lineDelimiterField = new JTextField(14);
+        lineDelimiterField.setPreferredSize(new Dimension(140, 22));
+        addRow(centerPanel, layout, "Delimiter:", lineDelimiterField, row++);
+
+        // --- MLLP section ---
+        hg = new GridBagConstraints();
+        hg.gridwidth = 2; hg.gridx = 0; hg.gridy = row++;
+        hg.fill = GridBagConstraints.HORIZONTAL; hg.weightx = 1.0;
+        mllpHeader = createSectionHeader("MLLP Options");
+        layout.setConstraints(mllpHeader, hg);
+        centerPanel.add(mllpHeader);
+        JSeparator sep3 = new JSeparator(SwingConstants.HORIZONTAL);
+        sep3.setForeground(SEP_COLOR);
+        GridBagConstraints sep3g = new GridBagConstraints();
+        sep3g.gridwidth = 2; sep3g.gridx = 0; sep3g.gridy = row++;
+        sep3g.fill = GridBagConstraints.HORIZONTAL; sep3g.weightx = 1.0;
+        layout.setConstraints(sep3, sep3g);
+        centerPanel.add(sep3);
+
+        useMLLPv2Box = new JCheckBox("Use MLLPv2 (send commit ACK)");
+        useMLLPv2Box.setBackground(Color.WHITE);
+        addRow(centerPanel, layout, "MLLP Version:", useMLLPv2Box, row++);
+
+        // --- ACK/NAK section ---
+        hg = new GridBagConstraints();
+        hg.gridwidth = 2; hg.gridx = 0; hg.gridy = row++;
+        hg.fill = GridBagConstraints.HORIZONTAL; hg.weightx = 1.0;
+        ackNakHeader = createSectionHeader("ACK / NAK Bytes");
+        layout.setConstraints(ackNakHeader, hg);
+        centerPanel.add(ackNakHeader);
+        JSeparator sep4 = new JSeparator(SwingConstants.HORIZONTAL);
+        sep4.setForeground(SEP_COLOR);
+        GridBagConstraints sep4g = new GridBagConstraints();
+        sep4g.gridwidth = 2; sep4g.gridx = 0; sep4g.gridy = row++;
+        sep4g.fill = GridBagConstraints.HORIZONTAL; sep4g.weightx = 1.0;
+        layout.setConstraints(sep4, sep4g);
+        centerPanel.add(sep4);
+
+        commitAckField = new JTextField(10);
+        commitAckField.setPreferredSize(new Dimension(100, 22));
+        addRow(centerPanel, layout, "Commit ACK (hex):", commitAckField, row++);
+
+        commitNakField = new JTextField(10);
+        commitNakField.setPreferredSize(new Dimension(100, 22));
+        addRow(centerPanel, layout, "Commit NAK (hex):", commitNakField, row++);
+
+        // --- Retry section ---
+        hg = new GridBagConstraints();
+        hg.gridwidth = 2; hg.gridx = 0; hg.gridy = row++;
+        hg.fill = GridBagConstraints.HORIZONTAL; hg.weightx = 1.0;
+        retryHeader = createSectionHeader("Retry Options");
+        layout.setConstraints(retryHeader, hg);
+        centerPanel.add(retryHeader);
+        JSeparator sep5 = new JSeparator(SwingConstants.HORIZONTAL);
+        sep5.setForeground(SEP_COLOR);
+        GridBagConstraints sep5g = new GridBagConstraints();
+        sep5g.gridwidth = 2; sep5g.gridx = 0; sep5g.gridy = row++;
+        sep5g.fill = GridBagConstraints.HORIZONTAL; sep5g.weightx = 1.0;
+        layout.setConstraints(sep5, sep5g);
+        centerPanel.add(sep5);
+
+        maxRetryField = new JTextField(8);
+        maxRetryField.setPreferredSize(new Dimension(60, 22));
+        addRow(centerPanel, layout, "Max Retry Count:", maxRetryField, row++);
 
         add(centerPanel, BorderLayout.CENTER);
 
@@ -155,7 +269,6 @@ public class SerialTransmissionModeDialog extends JDialog implements ActionListe
         JPanel bottomPanel = new JPanel(new BorderLayout(8, 8));
         bottomPanel.setBackground(Color.WHITE);
 
-        // Byte abbreviations
         JPanel abbrevPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         abbrevPanel.setBackground(Color.WHITE);
         JLabel abbrevLabel = new JLabel("Insert Byte:");
@@ -172,7 +285,6 @@ public class SerialTransmissionModeDialog extends JDialog implements ActionListe
         abbrevPanel.add(byteAbbrevBox);
         bottomPanel.add(abbrevPanel, BorderLayout.NORTH);
 
-        // Button panel
         JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
         btnPanel.setBackground(Color.WHITE);
         JButton okBtn = new JButton("OK");
@@ -188,264 +300,49 @@ public class SerialTransmissionModeDialog extends JDialog implements ActionListe
         add(bottomPanel, BorderLayout.SOUTH);
     }
 
-    private JPanel createSection(String title) {
-        JPanel panel = new JPanel(new GridBagLayout());
-        panel.setBackground(Color.WHITE);
-        panel.setOpaque(true);
-        // EmptyBorder with small padding — matches Mirth's TCP section style
-        panel.setBorder(BorderFactory.createEmptyBorder(6, 4, 4, 4));
-        return panel;
-    }
-
-    private JLabel createSectionHeader(String title) {
-        JLabel header = new JLabel(title);
-        header.setFont(header.getFont().deriveFont(Font.BOLD, 12f));
-        header.setForeground(LABEL_COLOR);
-        header.setBackground(Color.WHITE);
-        header.setOpaque(true);
-        return header;
-    }
-
-    private GridBagConstraints mkGbc() {
-        GridBagConstraints g = new GridBagConstraints();
-        g.insets = new Insets(3, 4, 3, 4);
-        g.anchor = GridBagConstraints.EAST;
-        g.fill = GridBagConstraints.NONE;
-        g.weightx = 0;
-        g.weighty = 0;
-        return g;
-    }
-
-    private JLabel mkLabel(String text) {
-        JLabel label = new JLabel(text);
-        label.setForeground(LABEL_COLOR);
-        return label;
-    }
-
-    // ===== Framing Section =====
-
-    private JPanel createFramingSection() {
-        JPanel p = createSection("Message Framing");
-
-        GridBagConstraints g = mkGbc();
-
-        // Row 0: Start Bytes
-        g.gridy = 0;
-        g.gridx = 0; p.add(mkLabel("Start of Message Bytes (hex):"), g);
-        g.gridx = 1; g.anchor = GridBagConstraints.WEST;
-        startBytesField = new JTextField(12);
-        startBytesField.setPreferredSize(new Dimension(120, 22));
-        p.add(startBytesField, g);
-        JLabel startHint = new JLabel("e.g. 0B for <VT>");
-        startHint.setFont(startHint.getFont().deriveFont(10f));
-        startHint.setForeground(Color.GRAY);
-        g.gridx = 2; p.add(startHint, g);
-
-        // Row 1: End Bytes
-        g.gridy = 1;
-        g.gridx = 0; g.anchor = GridBagConstraints.EAST; p.add(mkLabel("End of Message Bytes (hex):"), g);
-        g.gridx = 1; g.anchor = GridBagConstraints.WEST;
-        endBytesField = new JTextField(12);
-        endBytesField.setPreferredSize(new Dimension(120, 22));
-        p.add(endBytesField, g);
-        JLabel endHint = new JLabel("e.g. 1C0D for <FS><CR>");
-        endHint.setFont(endHint.getFont().deriveFont(10f));
-        endHint.setForeground(Color.GRAY);
-        g.gridx = 2; p.add(endHint, g);
-
-        return p;
-    }
-
-    // ===== Line Mode Section =====
-
-    private JPanel createLineModeSection() {
-        JPanel p = createSection("Line Delimiter");
-
-        GridBagConstraints g = mkGbc();
-
-        // Row 0: Delimiter
-        g.gridy = 0;
-        g.gridx = 0; p.add(mkLabel("Line Delimiter:"), g);
-        g.gridx = 1; g.anchor = GridBagConstraints.WEST;
-        lineDelimiterField = new JTextField(12);
-        lineDelimiterField.setPreferredSize(new Dimension(120, 22));
-        p.add(lineDelimiterField, g);
-        JLabel hint = new JLabel("Use \\r\\n, \\n, \\r, or custom");
-        hint.setFont(hint.getFont().deriveFont(10f));
-        hint.setForeground(Color.GRAY);
-        g.gridx = 2; p.add(hint, g);
-
-        return p;
-    }
-
-    // ===== MLLP Section =====
-
-    private JPanel createMllpSection() {
-        JPanel p = createSection("MLLP Options");
-
-        GridBagConstraints g = mkGbc();
-
-        // Row 0: MLLPv2
-        g.gridy = 0;
-        g.gridx = 0; g.gridwidth = 3; g.anchor = GridBagConstraints.WEST;
-        useMLLPv2Box = new JCheckBox("Use MLLPv2 (send commit ACK)");
-        p.add(useMLLPv2Box, g);
-        g.gridwidth = 1;
-
-        return p;
-    }
-
-    // ===== ACK/NAK Section =====
-
-    private JPanel createAckNakSection() {
-        JPanel p = createSection("ACK / NAK Bytes");
-
-        GridBagConstraints g = mkGbc();
-
-        // Row 0: ACK
-        g.gridy = 0;
-        g.gridx = 0; p.add(mkLabel("Commit ACK Bytes (hex):"), g);
-        g.gridx = 1; g.anchor = GridBagConstraints.WEST;
-        commitAckField = new JTextField(12);
-        commitAckField.setPreferredSize(new Dimension(100, 22));
-        p.add(commitAckField, g);
-        JLabel ackHint = new JLabel("default: 06 (<ACK>)");
-        ackHint.setFont(ackHint.getFont().deriveFont(10f));
-        ackHint.setForeground(Color.GRAY);
-        g.gridx = 2; p.add(ackHint, g);
-
-        // Row 1: NAK
-        g.gridy = 1;
-        g.gridx = 0; g.anchor = GridBagConstraints.EAST; p.add(mkLabel("Commit NAK Bytes (hex):"), g);
-        g.gridx = 1; g.anchor = GridBagConstraints.WEST;
-        commitNakField = new JTextField(12);
-        commitNakField.setPreferredSize(new Dimension(100, 22));
-        p.add(commitNakField, g);
-        JLabel nakHint = new JLabel("default: 15 (<NAK>)");
-        nakHint.setFont(nakHint.getFont().deriveFont(10f));
-        nakHint.setForeground(Color.GRAY);
-        g.gridx = 2; p.add(nakHint, g);
-
-        return p;
-    }
-
-    // ===== Retry Section =====
-
-    private JPanel createRetrySection() {
-        JPanel p = createSection("Retry Options");
-
-        GridBagConstraints g = mkGbc();
-
-        // Row 0: Max Retry
-        g.gridy = 0;
-        g.gridx = 0; p.add(mkLabel("Max Retry Count:"), g);
-        g.gridx = 1; g.anchor = GridBagConstraints.WEST;
-        maxRetryField = new JTextField(8);
-        maxRetryField.setPreferredSize(new Dimension(80, 22));
-        p.add(maxRetryField, g);
-
-        return p;
-    }
-
-    // ===== Mode display update =====
-
     private void updateModeDisplay() {
-        // Show/hide sections based on mode
         boolean showFraming = !"RAW".equals(mode) && !"LINE".equals(mode);
         boolean showLine = "LINE".equals(mode);
         boolean showMllp = "MLLP".equals(mode);
         boolean showAckNak = "MLLP".equals(mode) || "ASTM".equals(mode);
         boolean showRetry = "MLLP".equals(mode);
 
-        framingSection.setVisible(showFraming);
-        lineModeSection.setVisible(showLine);
-        mllpSection.setVisible(showMllp);
-        ackNakSection.setVisible(showAckNak);
-        retrySection.setVisible(showRetry);
+        framingHeader.setVisible(showFraming);
+        framingSection = null; // sections are inline now, we toggle header visibility
+        lineHeader.setVisible(showLine);
+        mllpHeader.setVisible(showMllp);
+        ackNakHeader.setVisible(showAckNak);
+        retryHeader.setVisible(showRetry);
 
-        // Update description
         String desc = "";
         String sample = "";
         switch (mode) {
             case "RAW":
-                desc = "Raw mode: bytes are passed through without any framing. Every read is dispatched as-is.";
+                desc = "Raw mode: bytes are passed through without any framing.";
                 sample = "<raw bytes>";
                 break;
             case "LINE":
-                desc = "Line mode: messages are delimited by a character sequence (e.g. \\r\\n). Useful for text protocols.";
-                sample = "<message>" + escape(config().getLineDelimiter()) + "<message>" + escape(config().getLineDelimiter()) + "...";
+                desc = "Line mode: messages are delimited by a character sequence.";
+                sample = "<message>\\r\\n<message>\\r\\n...";
                 break;
             case "FRAME":
-                desc = "Frame mode: messages are wrapped between Start and End byte sequences. Useful for custom binary protocols.";
-                sample = hexToDisplay(config().getStartOfMessageBytes(), "<none>") +
-                         "<message>" +
-                         hexToDisplay(config().getEndOfMessageBytes(), "<none>");
+                desc = "Frame mode: messages are wrapped between Start and End byte sequences.";
+                sample = "<start><message><end>";
                 break;
             case "MLLP":
-                desc = "MLLP mode: Minimal Lower Layer Protocol for HL7. Uses <VT>...<FS><CR> framing with optional ACK.";
+                desc = "MLLP mode: Minimal Lower Layer Protocol for HL7.";
                 sample = "<VT><message><FS><CR>";
                 break;
             case "ASTM":
-                desc = "ASTM E1381 mode: American Society for Testing and Materials protocol for medical devices.";
+                desc = "ASTM E1381 mode: for medical devices.";
                 sample = "<STX><message><ETX><checksum><CR><LF>";
                 break;
-            default:
-                desc = "Unknown mode.";
         }
         descriptionLabel.setText("<html><p style='width:400px'>" + desc + "</p></html>");
         sampleFrameLabel.setText(sample);
     }
 
-    private SerialPortConfig config() {
-        // Helper to get a temp config for display
-        SerialPortConfig c = new SerialPortConfig();
-        loadConfig(c);
-        return c;
-    }
-
-    private String escape(String delim) {
-        if (delim == null || delim.isEmpty()) return "\\r\\n";
-        return delim;
-    }
-
-    private String hexToDisplay(String hex, String fallback) {
-        if (hex == null || hex.trim().isEmpty()) return fallback;
-        // Convert hex to display format
-        StringBuilder sb = new StringBuilder();
-        String clean = hex.replaceAll("\\s", "").toUpperCase();
-        if (clean.length() % 2 != 0) clean = "0" + clean;
-        for (int i = 0; i < clean.length(); i += 2) {
-            String byteHex = clean.substring(i, i + 2);
-            String abbrev = hexToAbbrev(byteHex);
-            if (abbrev != null) {
-                sb.append("<").append(abbrev).append(">");
-            } else {
-                sb.append("0x").append(byteHex);
-            }
-        }
-        return sb.toString();
-    }
-
-    private String hexToAbbrev(String hex) {
-        switch (hex.toUpperCase()) {
-            case "00": return "NUL"; case "01": return "SOH"; case "02": return "STX";
-            case "03": return "ETX"; case "04": return "EOT"; case "05": return "ENQ";
-            case "06": return "ACK"; case "07": return "BEL"; case "08": return "BS";
-            case "09": return "TAB"; case "0A": return "LF"; case "0B": return "VT";
-            case "0C": return "FF"; case "0D": return "CR"; case "0E": return "SO";
-            case "0F": return "SI"; case "10": return "DLE"; case "11": return "DC1";
-            case "12": return "DC2"; case "13": return "DC3"; case "14": return "DC4";
-            case "15": return "NAK"; case "16": return "SYN"; case "17": return "ETB";
-            case "18": return "CAN"; case "19": return "EM"; case "1A": return "SUB";
-            case "1B": return "ESC"; case "1C": return "FS"; case "1D": return "GS";
-            case "1E": return "RS"; case "1F": return "US"; case "20": return "SP";
-            case "7F": return "DEL";
-            default: return null;
-        }
-    }
-
     private void loadConfig(SerialPortConfig config) {
-        // Set defaults per mode
         if ("MLLP".equals(mode)) {
             startBytesField.setText(config.getStartOfMessageBytes().isEmpty() ? "0B" : config.getStartOfMessageBytes());
             endBytesField.setText(config.getEndOfMessageBytes().isEmpty() ? "1C0D" : config.getEndOfMessageBytes());
@@ -480,7 +377,7 @@ public class SerialTransmissionModeDialog extends JDialog implements ActionListe
         if (e.getSource() == byteAbbrevBox) {
             String selected = (String) byteAbbrevBox.getSelectedItem();
             if (selected == null || selected.startsWith("--")) return;
-            String abbrev = selected.substring(1, selected.length() - 1); // strip < >
+            String abbrev = selected.substring(1, selected.length() - 1);
             String hex = abbrevToHex(abbrev);
             if (hex == null) return;
 
