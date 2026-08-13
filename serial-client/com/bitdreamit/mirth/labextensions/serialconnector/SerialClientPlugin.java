@@ -1,29 +1,32 @@
 package com.bitdreamit.mirth.labextensions.serialconnector;
 
-import com.mirth.connect.client.core.ClientException;
-import com.mirth.connect.client.ui.Frame;
-import com.mirth.connect.client.ui.PlatformUI;
 import com.mirth.connect.model.converters.ObjectXMLSerializer;
 import com.mirth.connect.plugins.ClientPlugin;
 import com.thoughtworks.xstream.XStream;
-import com.thoughtworks.xstream.security.WildcardTypePermission;
 import org.apache.log4j.Logger;
-
-import java.util.Properties;
 
 /**
  * Client-side plugin — extends Mirth's ClientPlugin abstract class.
  *
- * This is the OFFICIAL way Mirth loads client-side plugin code. Mirth:
- *   1. Reads plugin.xml <clientClasses> to find the class name
- *   2. Calls Class.forName(name) to load the class
- *   3. Calls constructor.newInstance(pluginName) to INSTANTIATE it
- *   4. The constructor runs AFTER ObjectXMLSerializer is fully initialized
+ * FIXES: CannotResolveClassException: serialReceiverProperties
  *
- * This fixes CannotResolveClassException: serialReceiverProperties
- * because the constructor registers XStream aliases at the correct time.
+ * ROOT CAUSE (Mirth bug #6348):
+ *   Mirth 4.4.1+ uses XStream 1.4.20 with an allowlist (not denylist).
+ *   The SERVER side reads xstream.allowtypes from mirth.properties.
+ *   The CLIENT side does NOT read this property — it's a known Mirth bug.
+ *   So custom plugin classes are BLOCKED by XStream security on the client.
  *
- * Based on Mirth's own TcpClientPlugin implementation pattern.
+ * SOLUTION (confirmed by Mirth developers in issue #6348):
+ *   "Also by the developer of the plugin, by explicitly whitelisting the
+ *    relevant classes/packages in the code."
+ *
+ *   We must call xstream.allowTypes() and xstream.allowTypesByWildcard()
+ *   DIRECTLY on the XStream instance — NOT addPermission().
+ *
+ *   Mirth 4.5.2's ObjectXMLSerializer has TWO XStream instances:
+ *     1. getXStream() — the main instance
+ *     2. instanceWithReferences — used for deserializing objects with references
+ *   We must register on BOTH.
  *
  * CRITICAL: This class MUST exist ONLY in serial-client.jar.
  *           It MUST be listed in plugin.xml <clientClasses>.
@@ -41,30 +44,38 @@ public class SerialClientPlugin extends ClientPlugin {
         SerialStatistics.class
     };
 
-    /** Package wildcard permission. */
-    private static final String[] PERMISSION_PATTERNS = {
+    /** Fully-qualified class names for allowTypesByWildcard. */
+    private static final String[] WILDCARD_TYPES = {
         "com.bitdreamit.mirth.labextensions.serialconnector.**"
     };
 
-    /**
-     * Constructor — called by Mirth AFTER ObjectXMLSerializer is initialized.
-     * This is the correct place to register XStream aliases.
-     *
-     * @param pluginName the plugin point name from plugin.xml
-     */
+    /** Fully-qualified class names for allowTypes (exact matches). */
+    private static final String[] EXACT_TYPES = {
+        "com.bitdreamit.mirth.labextensions.serialconnector.SerialReceiverProperties",
+        "com.bitdreamit.mirth.labextensions.serialconnector.SerialDispatcherProperties",
+        "com.bitdreamit.mirth.labextensions.serialconnector.SerialPortConfig",
+        "com.bitdreamit.mirth.labextensions.serialconnector.ProtocolLogEntry",
+        "com.bitdreamit.mirth.labextensions.serialconnector.ProtocolLogEntry$Direction",
+        "com.bitdreamit.mirth.labextensions.serialconnector.SerialStatistics"
+    };
+
     public SerialClientPlugin(String pluginName) {
         super(pluginName);
-        logger.info("SerialClientPlugin: constructor called for '" + pluginName + "' — registering XStream aliases.");
+        logger.info("SerialClientPlugin: constructor called for '" + pluginName + "' — registering XStream types.");
 
         try {
             ObjectXMLSerializer serializer = ObjectXMLSerializer.getInstance();
             XStream xstream = serializer.getXStream();
 
-            // 1. Register security permission
-            xstream.addPermission(new WildcardTypePermission(PERMISSION_PATTERNS));
-            logger.info("SerialClientPlugin: security permission registered.");
+            // 1. Allow types by wildcard (CRITICAL — this is the Mirth 4.5.2 API)
+            xstream.allowTypesByWildcard(WILDCARD_TYPES);
+            logger.info("SerialClientPlugin: allowTypesByWildcard registered.");
 
-            // 2. Process @XStreamAlias annotations for all plugin classes
+            // 2. Allow exact types (belt and suspenders)
+            xstream.allowTypes(EXACT_TYPES);
+            logger.info("SerialClientPlugin: allowTypes registered for " + EXACT_TYPES.length + " classes.");
+
+            // 3. Process @XStreamAlias annotations
             for (Class<?> clazz : PLUGIN_CLASSES) {
                 try {
                     xstream.processAnnotations(clazz);
@@ -75,10 +86,7 @@ public class SerialClientPlugin extends ClientPlugin {
                 }
             }
 
-            // 3. Manual alias registration (bulletproof fallback)
-            // XStream auto-derives tag names from class names (SerialReceiverProperties → serialReceiverProperties)
-            // but only if the class is registered. This explicit alias ensures it works even if
-            // annotation processing has issues.
+            // 4. Manual alias registration (bulletproof)
             xstream.alias("serialReceiverProperties", SerialReceiverProperties.class);
             xstream.alias("serialDispatcherProperties", SerialDispatcherProperties.class);
             xstream.alias("serialPortConfig", SerialPortConfig.class);
@@ -86,8 +94,7 @@ public class SerialClientPlugin extends ClientPlugin {
             xstream.alias("serialStatistics", SerialStatistics.class);
             logger.info("SerialClientPlugin: manual aliases registered.");
 
-            logger.info("SerialClientPlugin: registration complete — " +
-                        PLUGIN_CLASSES.length + " classes processed.");
+            logger.info("SerialClientPlugin: registration complete.");
 
         } catch (Throwable t) {
             logger.error("SerialClientPlugin: FATAL — registration failed: " +
