@@ -5,28 +5,28 @@ import com.mirth.connect.plugins.ClientPlugin;
 import com.thoughtworks.xstream.XStream;
 import org.apache.log4j.Logger;
 
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+
 /**
  * Client-side plugin — extends Mirth's ClientPlugin abstract class.
  *
  * FIXES: CannotResolveClassException: serialReceiverProperties
  *
- * ROOT CAUSE (Mirth bug #6348):
- *   Mirth 4.4.1+ uses XStream 1.4.20 with an allowlist (not denylist).
- *   The SERVER side reads xstream.allowtypes from mirth.properties.
- *   The CLIENT side does NOT read this property — it's a known Mirth bug.
- *   So custom plugin classes are BLOCKED by XStream security on the client.
- *
- * SOLUTION (confirmed by Mirth developers in issue #6348):
- *   "Also by the developer of the plugin, by explicitly whitelisting the
- *    relevant classes/packages in the code."
- *
- *   We must call xstream.allowTypes() and xstream.allowTypesByWildcard()
- *   DIRECTLY on the XStream instance — NOT addPermission().
- *
+ * ROOT CAUSE:
  *   Mirth 4.5.2's ObjectXMLSerializer has TWO XStream instances:
  *     1. getXStream() — the main instance
- *     2. instanceWithReferences — used for deserializing objects with references
- *   We must register on BOTH.
+ *     2. instanceWithReferences — used by deserializeList() for channel summaries
+ *
+ *   When we call xstream.processAnnotations() or xstream.alias() directly,
+ *   it only registers on instance #1. But deserializeList() uses instance #2,
+ *   so the alias is missing → CannotResolveClassException.
+ *
+ * SOLUTION:
+ *   Call serializer.processAnnotations() and serializer.allowTypes() instead
+ *   of calling methods directly on the XStream instance. These serializer-level
+ *   methods register on BOTH XStream instances.
  *
  * CRITICAL: This class MUST exist ONLY in serial-client.jar.
  *           It MUST be listed in plugin.xml <clientClasses>.
@@ -44,57 +44,50 @@ public class SerialClientPlugin extends ClientPlugin {
         SerialStatistics.class
     };
 
-    /** Fully-qualified class names for allowTypesByWildcard. */
-    private static final String[] WILDCARD_TYPES = {
-        "com.bitdreamit.mirth.labextensions.serialconnector.**"
-    };
-
     /** Fully-qualified class names for allowTypes (exact matches). */
-    private static final String[] EXACT_TYPES = {
+    private static final List<String> EXACT_TYPES = Arrays.asList(
         "com.bitdreamit.mirth.labextensions.serialconnector.SerialReceiverProperties",
         "com.bitdreamit.mirth.labextensions.serialconnector.SerialDispatcherProperties",
         "com.bitdreamit.mirth.labextensions.serialconnector.SerialPortConfig",
         "com.bitdreamit.mirth.labextensions.serialconnector.ProtocolLogEntry",
         "com.bitdreamit.mirth.labextensions.serialconnector.ProtocolLogEntry$Direction",
         "com.bitdreamit.mirth.labextensions.serialconnector.SerialStatistics"
-    };
+    );
+
+    /** Wildcard patterns for allowTypesByWildcard. */
+    private static final List<String> WILDCARD_TYPES = Arrays.asList(
+        "com.bitdreamit.mirth.labextensions.serialconnector.**"
+    );
 
     public SerialClientPlugin(String pluginName) {
         super(pluginName);
-        logger.info("SerialClientPlugin: constructor called for '" + pluginName + "' — registering XStream types.");
+        logger.info("SerialClientPlugin: constructor called for '" + pluginName + "' — registering on BOTH XStream instances.");
 
         try {
             ObjectXMLSerializer serializer = ObjectXMLSerializer.getInstance();
+
+            // 1. CRITICAL: Call serializer.processAnnotations() — NOT xstream.processAnnotations()!
+            //    This registers @XStreamAlias on BOTH getXStream() AND instanceWithReferences.
+            //    Without this, deserializeList() fails with CannotResolveClassException.
+            serializer.processAnnotations(PLUGIN_CLASSES);
+            logger.info("SerialClientPlugin: processAnnotations() called on serializer (registers on BOTH XStream instances).");
+
+            // 2. CRITICAL: Call serializer.allowTypes() — NOT xstream.allowTypesByWildcard()!
+            //    This registers security permissions on BOTH XStream instances.
+            serializer.allowTypes(EXACT_TYPES, WILDCARD_TYPES, Collections.<String>emptyList());
+            logger.info("SerialClientPlugin: allowTypes() called on serializer (registers on BOTH XStream instances).");
+
+            // 3. Also register manual aliases on the main XStream instance (belt and suspenders)
             XStream xstream = serializer.getXStream();
-
-            // 1. Allow types by wildcard (CRITICAL — this is the Mirth 4.5.2 API)
-            xstream.allowTypesByWildcard(WILDCARD_TYPES);
-            logger.info("SerialClientPlugin: allowTypesByWildcard registered.");
-
-            // 2. Allow exact types (belt and suspenders)
-            xstream.allowTypes(EXACT_TYPES);
-            logger.info("SerialClientPlugin: allowTypes registered for " + EXACT_TYPES.length + " classes.");
-
-            // 3. Process @XStreamAlias annotations
-            for (Class<?> clazz : PLUGIN_CLASSES) {
-                try {
-                    xstream.processAnnotations(clazz);
-                    logger.info("SerialClientPlugin: processAnnotations(" + clazz.getSimpleName() + ") OK");
-                } catch (Throwable t) {
-                    logger.warn("SerialClientPlugin: processAnnotations(" +
-                                clazz.getSimpleName() + ") failed: " + t.getMessage());
-                }
-            }
-
-            // 4. Manual alias registration (bulletproof)
             xstream.alias("serialReceiverProperties", SerialReceiverProperties.class);
             xstream.alias("serialDispatcherProperties", SerialDispatcherProperties.class);
             xstream.alias("serialPortConfig", SerialPortConfig.class);
             xstream.alias("protocolLogEntry", ProtocolLogEntry.class);
             xstream.alias("serialStatistics", SerialStatistics.class);
-            logger.info("SerialClientPlugin: manual aliases registered.");
+            logger.info("SerialClientPlugin: manual aliases registered on main XStream instance.");
 
-            logger.info("SerialClientPlugin: registration complete.");
+            logger.info("SerialClientPlugin: registration complete — " +
+                        PLUGIN_CLASSES.length + " classes on BOTH XStream instances.");
 
         } catch (Throwable t) {
             logger.error("SerialClientPlugin: FATAL — registration failed: " +
