@@ -1,7 +1,6 @@
 package com.bitdreamit.mirth.labextensions.serialconnector;
 
 import javax.swing.*;
-import javax.swing.border.TitledBorder;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -112,33 +111,42 @@ public class SerialTransmissionModeDialog extends JDialog implements ActionListe
         g.fill = GridBagConstraints.HORIZONTAL;
         g.weightx = 1.0;
         g.weighty = 0.0;
-        g.insets = new Insets(0, 0, 8, 0);
 
         int row = 0;
 
         // Framing section (Start/End bytes)
+        g.gridy = row++; g.insets = new Insets(6, 0, 2, 0);
+        centerPanel.add(createSectionHeader("Message Framing"), g);
         framingSection = createFramingSection();
-        g.gridy = row++;
+        g.gridy = row++; g.insets = new Insets(0, 0, 6, 0);
         centerPanel.add(framingSection, g);
 
         // Line mode section (delimiter)
+        g.gridy = row++; g.insets = new Insets(6, 0, 2, 0);
+        centerPanel.add(createSectionHeader("Line Delimiter"), g);
         lineModeSection = createLineModeSection();
-        g.gridy = row++;
+        g.gridy = row++; g.insets = new Insets(0, 0, 6, 0);
         centerPanel.add(lineModeSection, g);
 
         // MLLP section
+        g.gridy = row++; g.insets = new Insets(6, 0, 2, 0);
+        centerPanel.add(createSectionHeader("MLLP Options"), g);
         mllpSection = createMllpSection();
-        g.gridy = row++;
+        g.gridy = row++; g.insets = new Insets(0, 0, 6, 0);
         centerPanel.add(mllpSection, g);
 
         // ACK/NAK section
+        g.gridy = row++; g.insets = new Insets(6, 0, 2, 0);
+        centerPanel.add(createSectionHeader("ACK / NAK Bytes"), g);
         ackNakSection = createAckNakSection();
-        g.gridy = row++;
+        g.gridy = row++; g.insets = new Insets(0, 0, 6, 0);
         centerPanel.add(ackNakSection, g);
 
         // Retry section
+        g.gridy = row++; g.insets = new Insets(6, 0, 2, 0);
+        centerPanel.add(createSectionHeader("Retry Options"), g);
         retrySection = createRetrySection();
-        g.gridy = row++;
+        g.gridy = row++; g.insets = new Insets(0, 0, 6, 0);
         centerPanel.add(retrySection, g);
 
         add(centerPanel, BorderLayout.CENTER);
@@ -183,19 +191,19 @@ public class SerialTransmissionModeDialog extends JDialog implements ActionListe
     private JPanel createSection(String title) {
         JPanel panel = new JPanel(new GridBagLayout());
         panel.setBackground(Color.WHITE);
-        TitledBorder border = BorderFactory.createTitledBorder(
-                BorderFactory.createLineBorder(BORDER_COLOR, 1),
-                title,
-                TitledBorder.DEFAULT_JUSTIFICATION,
-                TitledBorder.DEFAULT_POSITION,
-                new Font(Font.SANS_SERIF, Font.BOLD, 11),
-                LABEL_COLOR
-        );
-        panel.setBorder(BorderFactory.createCompoundBorder(
-                border,
-                BorderFactory.createEmptyBorder(4, 8, 8, 8)
-        ));
+        panel.setOpaque(true);
+        // EmptyBorder with small padding — matches Mirth's TCP section style
+        panel.setBorder(BorderFactory.createEmptyBorder(6, 4, 4, 4));
         return panel;
+    }
+
+    private JLabel createSectionHeader(String title) {
+        JLabel header = new JLabel(title);
+        header.setFont(header.getFont().deriveFont(Font.BOLD, 12f));
+        header.setForeground(LABEL_COLOR);
+        header.setBackground(Color.WHITE);
+        header.setOpaque(true);
+        return header;
     }
 
     private GridBagConstraints mkGbc() {

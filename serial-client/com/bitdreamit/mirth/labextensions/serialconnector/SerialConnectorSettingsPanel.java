@@ -5,7 +5,6 @@ import com.mirth.connect.client.ui.components.MirthComboBox;
 import com.mirth.connect.donkey.model.channel.ConnectorProperties;
 
 import javax.swing.*;
-import javax.swing.border.TitledBorder;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -76,8 +75,6 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
     private JTextField ackPatternField;
 
     // Colors matching Mirth's theme
-    private static final Color SECTION_BG = new Color(248, 248, 248);
-    private static final Color BORDER_COLOR = new Color(180, 180, 180);
     private static final Color LABEL_COLOR = new Color(60, 60, 60);
 
     public SerialConnectorSettingsPanel() {
@@ -109,37 +106,65 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         outerGbc.fill = GridBagConstraints.HORIZONTAL;
         outerGbc.weightx = 1.0;
         outerGbc.weighty = 0.0;
-        outerGbc.insets = new Insets(0, 0, 8, 0);
+        outerGbc.insets = new Insets(0, 0, 0, 0);
 
         int row = 0;
 
         // Section 1: Connection
         outerGbc.gridy = row++;
+        outerGbc.insets = new Insets(8, 0, 2, 0);
+        contentPanel.add(createSectionHeader("Connection"), outerGbc);
+        outerGbc.gridy = row++;
+        outerGbc.insets = new Insets(0, 0, 8, 0);
         contentPanel.add(createConnectionSection(), outerGbc);
 
         // Section 2: Data Format
         outerGbc.gridy = row++;
+        outerGbc.insets = new Insets(8, 0, 2, 0);
+        contentPanel.add(createSectionHeader("Data Format"), outerGbc);
+        outerGbc.gridy = row++;
+        outerGbc.insets = new Insets(0, 0, 8, 0);
         contentPanel.add(createDataFormatSection(), outerGbc);
 
         // Section 3: Timeouts & Buffer
         outerGbc.gridy = row++;
+        outerGbc.insets = new Insets(8, 0, 2, 0);
+        contentPanel.add(createSectionHeader("Timeouts & Buffer"), outerGbc);
+        outerGbc.gridy = row++;
+        outerGbc.insets = new Insets(0, 0, 8, 0);
         contentPanel.add(createTimeoutsSection(), outerGbc);
 
         // Section 4: Signal Control
         outerGbc.gridy = row++;
+        outerGbc.insets = new Insets(8, 0, 2, 0);
+        contentPanel.add(createSectionHeader("Signal Control"), outerGbc);
+        outerGbc.gridy = row++;
+        outerGbc.insets = new Insets(0, 0, 8, 0);
         contentPanel.add(createSignalSection(), outerGbc);
 
         // Section 5: Advanced
         outerGbc.gridy = row++;
+        outerGbc.insets = new Insets(8, 0, 2, 0);
+        contentPanel.add(createSectionHeader("Advanced"), outerGbc);
+        outerGbc.gridy = row++;
+        outerGbc.insets = new Insets(0, 0, 8, 0);
         contentPanel.add(createAdvancedSection(), outerGbc);
 
         // Section 6: Health Monitor
         outerGbc.gridy = row++;
+        outerGbc.insets = new Insets(8, 0, 2, 0);
+        contentPanel.add(createSectionHeader("Health Monitor"), outerGbc);
+        outerGbc.gridy = row++;
+        outerGbc.insets = new Insets(0, 0, 8, 0);
         contentPanel.add(createHealthSection(), outerGbc);
 
         // Section 7: Destination Options (sender only)
         if (isSender) {
             outerGbc.gridy = row++;
+            outerGbc.insets = new Insets(8, 0, 2, 0);
+            contentPanel.add(createSectionHeader("Destination Options"), outerGbc);
+            outerGbc.gridy = row++;
+            outerGbc.insets = new Insets(0, 0, 8, 0);
             contentPanel.add(createDestinationSection(), outerGbc);
         }
 
@@ -160,24 +185,30 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
     }
 
     /**
-     * Creates a titled bordered section like Mirth's TCP panels.
+     * Creates a section panel matching Mirth's TCP connector style.
+     * Uses an EmptyBorder with a bold heading label (no TitledBorder line).
+     * All backgrounds are pure white like Mirth's native panels.
      */
     private JPanel createSection(String title) {
         JPanel panel = new JPanel(new GridBagLayout());
         panel.setBackground(Color.WHITE);
-        TitledBorder border = BorderFactory.createTitledBorder(
-                BorderFactory.createLineBorder(BORDER_COLOR, 1),
-                title,
-                TitledBorder.DEFAULT_JUSTIFICATION,
-                TitledBorder.DEFAULT_POSITION,
-                new Font(Font.SANS_SERIF, Font.BOLD, 11),
-                LABEL_COLOR
-        );
-        panel.setBorder(BorderFactory.createCompoundBorder(
-                border,
-                BorderFactory.createEmptyBorder(4, 8, 8, 8)
-        ));
+        panel.setOpaque(true);
+        // EmptyBorder with small top spacing — matches Mirth's TCP section style
+        panel.setBorder(BorderFactory.createEmptyBorder(6, 4, 4, 4));
         return panel;
+    }
+
+    /**
+     * Creates a section header label matching Mirth's TCP connector style.
+     * Bold, dark gray text with a separator line below.
+     */
+    private JLabel createSectionHeader(String title) {
+        JLabel header = new JLabel(title);
+        header.setFont(header.getFont().deriveFont(Font.BOLD, 12f));
+        header.setForeground(LABEL_COLOR);
+        header.setBackground(Color.WHITE);
+        header.setOpaque(true);
+        return header;
     }
 
     private GridBagConstraints mkGbc() {
