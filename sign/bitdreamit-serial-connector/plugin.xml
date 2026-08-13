@@ -11,6 +11,10 @@
         <string>com.bitdreamit.mirth.labextensions.serialconnector.SerialServerPlugin</string>
     </serverClasses>
 
+    <clientClasses>
+        <string>com.bitdreamit.mirth.labextensions.serialconnector.SerialClientPlugin</string>
+    </clientClasses>
+
     <library path="serial-client.jar" type="CLIENT"/>
     <library path="serial-shared.jar" type="SHARED"/>
     <library path="serial-server.jar" type="SERVER"/>

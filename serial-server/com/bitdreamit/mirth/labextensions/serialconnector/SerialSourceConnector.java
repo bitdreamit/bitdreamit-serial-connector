@@ -9,11 +9,8 @@ import com.mirth.connect.donkey.server.channel.DispatchResult;
 import com.mirth.connect.donkey.server.channel.SourceConnector;
 import com.mirth.connect.donkey.server.event.ConnectionStatusEvent;
 import com.mirth.connect.donkey.server.event.ErrorEvent;
-import com.mirth.connect.model.converters.ObjectXMLSerializer;
 import com.mirth.connect.server.controllers.ControllerFactory;
 import com.mirth.connect.server.controllers.EventController;
-import com.thoughtworks.xstream.XStream;
-import com.thoughtworks.xstream.security.WildcardTypePermission;
 import org.apache.log4j.Logger;
 
 import java.io.ByteArrayOutputStream;
@@ -29,85 +26,12 @@ import java.util.concurrent.atomic.AtomicReference;
  * It must NOT contain SerialReceiverProperties or SerialDispatcherProperties —
  * those live in serial-shared.jar.
  *
- * All diagnostic logging goes through log4j (mirth.log).
- * No hardcoded file paths.
+ * XStream registration is handled by SerialServerPlugin.init(), NOT here.
+ * This class focuses only on connector lifecycle.
  */
 public class SerialSourceConnector extends SourceConnector {
     private static final Logger logger = Logger.getLogger(SerialSourceConnector.class);
     private EventController eventController = ControllerFactory.getFactory().createEventController();
-
-    static {
-        registerXStreamPermission();
-    }
-
-    private static void registerXStreamPermission() {
-        try {
-            XStream xstream = findXStream();
-            if (xstream != null) {
-                xstream.addPermission(new WildcardTypePermission(
-                        new String[]{"com.bitdreamit.mirth.labextensions.serialconnector.**"}));
-                xstream.processAnnotations(SerialReceiverProperties.class);
-                xstream.processAnnotations(SerialPortConfig.class);
-                logger.info("SerialSourceConnector: XStream permission + annotations registered.");
-            } else {
-                logger.error("SerialSourceConnector: XStream instance is NULL — " +
-                             "channel deserialization will fail with ForbiddenClassException!");
-            }
-        } catch (Throwable t) {
-            logger.error("SerialSourceConnector: FAILED to register XStream permission", t);
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static XStream findXStream() {
-        try {
-            ObjectXMLSerializer serializer = ObjectXMLSerializer.getInstance();
-            if (serializer == null) return null;
-
-            try {
-                java.lang.reflect.Method m = ObjectXMLSerializer.class.getMethod("getXStream");
-                Object val = m.invoke(serializer);
-                if (val instanceof XStream) return (XStream) val;
-            } catch (NoSuchMethodException ignored) {
-            } catch (Exception e) {
-                logger.warn("SerialSourceConnector: getXStream() threw: " + e.getMessage());
-            }
-
-            XStream found = findXStreamField(serializer, serializer.getClass());
-            if (found != null) return found;
-
-            for (java.lang.reflect.Field f : serializer.getClass().getDeclaredFields()) {
-                try {
-                    f.setAccessible(true);
-                    Object val = f.get(serializer);
-                    if (val != null) {
-                        XStream inner = findXStreamField(val, val.getClass());
-                        if (inner != null) return inner;
-                    }
-                } catch (Exception ignored) {}
-            }
-            return null;
-        } catch (Throwable t) {
-            logger.error("SerialSourceConnector: error finding XStream: " + t.getMessage(), t);
-            return null;
-        }
-    }
-
-    private static XStream findXStreamField(Object target, Class<?> clazz) {
-        while (clazz != null && clazz != Object.class) {
-            for (java.lang.reflect.Field f : clazz.getDeclaredFields()) {
-                if (XStream.class.isAssignableFrom(f.getType())) {
-                    try {
-                        f.setAccessible(true);
-                        Object val = f.get(target);
-                        if (val instanceof XStream) return (XStream) val;
-                    } catch (Exception ignored) {}
-                }
-            }
-            clazz = clazz.getSuperclass();
-        }
-        return null;
-    }
 
     private SerialReceiverProperties connectorProperties;
     private SerialPort serialPort;

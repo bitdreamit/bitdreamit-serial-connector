@@ -12,7 +12,7 @@
     </serverClasses>
 
     <clientClasses>
-        <string>com.bitdreamit.mirth.labextensions.serialconnector.SerialClientInitializer</string>
+        <string>com.bitdreamit.mirth.labextensions.serialconnector.SerialClientPlugin</string>
     </clientClasses>
 
     <library path="serial-client.jar" type="CLIENT"/>
