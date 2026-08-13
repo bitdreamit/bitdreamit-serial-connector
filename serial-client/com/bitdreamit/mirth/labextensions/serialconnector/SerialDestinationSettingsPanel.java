@@ -23,9 +23,9 @@ public class SerialDestinationSettingsPanel extends ConnectorSettingsPanel {
         setLayout(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.anchor = GridBagConstraints.NORTHWEST;
-        gbc.fill = GridBagConstraints.NONE;
-        gbc.weightx = 1;
-        gbc.weighty = 1;
+        gbc.fill = GridBagConstraints.BOTH;  // ← FIX: fill BOTH so panel stretches full width
+        gbc.weightx = 1.0;
+        gbc.weighty = 1.0;
         gbc.gridx = 0;
         gbc.gridy = 0;
         add(panel, gbc);

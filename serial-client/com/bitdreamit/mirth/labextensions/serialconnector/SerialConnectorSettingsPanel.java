@@ -217,9 +217,8 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         setOpaque(true);
         setLayout(new BorderLayout());
 
-        JPanel contentPanel = new JPanel();
-        GridBagLayout layout = new GridBagLayout();
-        contentPanel.setLayout(layout);
+        JPanel contentPanel = new ScrollablePanel(new GridBagLayout());
+        GridBagLayout layout = (GridBagLayout) contentPanel.getLayout();
         contentPanel.setBackground(Color.WHITE);
         contentPanel.setOpaque(true);
         contentPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
@@ -429,7 +428,51 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         scrollPane.getVerticalScrollBar().setUnitIncrement(16);
         scrollPane.setBackground(Color.WHITE);
         scrollPane.getViewport().setBackground(Color.WHITE);
+        scrollPane.getViewport().setOpaque(true);
+        scrollPane.setOpaque(true);
+        // Make the scroll pane fill the entire available area
+        scrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
         add(scrollPane, BorderLayout.CENTER);
+    }
+
+    /**
+     * Content panel that implements Scrollable so it tracks the viewport width.
+     * This prevents the gray area on the right side — the panel always fills
+     * the full width of the scroll pane.
+     */
+    private static class ScrollablePanel extends JPanel implements javax.swing.Scrollable {
+        public ScrollablePanel(LayoutManager layout) {
+            super(layout);
+        }
+
+        @Override
+        public Dimension getPreferredScrollableViewportSize() {
+            return getPreferredSize();
+        }
+
+        @Override
+        public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) {
+            return 16;
+        }
+
+        @Override
+        public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) {
+            return visibleRect.height;
+        }
+
+        /**
+         * Return true so the panel ALWAYS fills the full viewport width.
+         * This eliminates the gray area on the right side.
+         */
+        @Override
+        public boolean getScrollableTracksViewportWidth() {
+            return true;
+        }
+
+        @Override
+        public boolean getScrollableTracksViewportHeight() {
+            return false;
+        }
     }
 
     @Override
