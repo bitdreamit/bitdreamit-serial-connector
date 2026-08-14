@@ -74,6 +74,24 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
     private JTextField maxReconnectField;
     private JTextField reconnectDelayField;
 
+    // Premium fields
+    private JTextField idleTimeoutField;
+    private JTextField receiveIdleTimeoutField;
+    private JTextField portAliasField;
+    private JButton testConnectionBtn;
+
+    // PREMIUM: Destination extras
+    private MirthCheckBox processResponseBox;
+    private JTextField responseDelimiterField;
+    private JTextField responseTimeoutField;
+    private MirthCheckBox useTemplateBox;
+    private JTextField templateField;
+    private MirthComboBox checksumAlgoBox;
+
+    // PREMIUM: Port status indicator
+    private JLabel statusLabel;
+    private JLabel statsLabel;
+
     // Destination-only fields
     private MirthCheckBox waitAckBox;
     private JTextField ackTimeoutField;
@@ -244,6 +262,11 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         portPanel.add(autoDetectPortBox);
         addRowCustom(contentPanel, layout, "Port:", portPanel, row++);
 
+        // Port Alias (Premium)
+        portAliasField = new JTextField(20);
+        portAliasField.setPreferredSize(new Dimension(140, 22));
+        addRow(contentPanel, layout, "Port Alias:", portAliasField, row++);
+
         // Baud Rate row
         JPanel baudPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         baudPanel.setBackground(Color.WHITE);
@@ -373,6 +396,17 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         flushCloseBox.setSelected(true);
         addRowCustom(contentPanel, layout, "Flush on Close:", flushCloseBox, row++);
 
+        // ===== Section: Timeouts (Premium) =====
+        addSectionHeader(contentPanel, layout, "Idle & Receive Timeouts", row++);
+
+        idleTimeoutField = new JTextField("0", 8);
+        idleTimeoutField.setPreferredSize(new Dimension(80, 22));
+        addRow(contentPanel, layout, "Idle Timeout (ms):", idleTimeoutField, row++);
+
+        receiveIdleTimeoutField = new JTextField("0", 8);
+        receiveIdleTimeoutField.setPreferredSize(new Dimension(80, 22));
+        addRow(contentPanel, layout, "Receive Idle (ms):", receiveIdleTimeoutField, row++);
+
         // ===== Section: Health Monitor =====
         addSectionHeader(contentPanel, layout, "Health Monitor", row++);
 
@@ -409,6 +443,33 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
             ackPatternField = new JTextField("06", 8);
             ackPatternField.setPreferredSize(new Dimension(60, 22));
             addRow(contentPanel, layout, "ACK Pattern (hex):", ackPatternField, row++);
+
+            // PREMIUM: Response processing
+            processResponseBox = new MirthCheckBox("Read response after write");
+            addRowCustom(contentPanel, layout, "Process Response:", processResponseBox, row++);
+
+            responseDelimiterField = new JTextField("\\r\\n", 10);
+            responseDelimiterField.setPreferredSize(new Dimension(80, 22));
+            addRow(contentPanel, layout, "Response Delimiter:", responseDelimiterField, row++);
+
+            responseTimeoutField = new JTextField("5000", 8);
+            responseTimeoutField.setPreferredSize(new Dimension(80, 22));
+            addRow(contentPanel, layout, "Response Timeout (ms):", responseTimeoutField, row++);
+
+            // PREMIUM: NextGen-style template
+            useTemplateBox = new MirthCheckBox("Apply message template");
+            addRowCustom(contentPanel, layout, "Use Template:", useTemplateBox, row++);
+
+            templateField = new JTextField(30);
+            templateField.setPreferredSize(new Dimension(200, 22));
+            addRow(contentPanel, layout, "Template:", templateField, row++);
+
+            // PREMIUM: Custom checksum algorithm
+            checksumAlgoBox = new MirthComboBox();
+            checksumAlgoBox.setModel(new DefaultComboBoxModel<>(
+                    new String[]{"ASTM_STANDARD", "MOD256", "XOR", "NONE"}));
+            checksumAlgoBox.setPreferredSize(new Dimension(120, 22));
+            addRow(contentPanel, layout, "Checksum Algorithm:", checksumAlgoBox, row++);
         }
 
         // Glue at bottom
@@ -430,9 +491,26 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         scrollPane.getViewport().setBackground(Color.WHITE);
         scrollPane.getViewport().setOpaque(true);
         scrollPane.setOpaque(true);
-        // Make the scroll pane fill the entire available area
         scrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
         add(scrollPane, BorderLayout.CENTER);
+
+        // PREMIUM: Port status indicator at the bottom
+        JPanel statusPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 2));
+        statusPanel.setBackground(new Color(240, 240, 240));
+        statusPanel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(200, 200, 200)),
+                BorderFactory.createEmptyBorder(2, 8, 2, 8)
+        ));
+        statusLabel = new JLabel("● Port Status: Unknown");
+        statusLabel.setFont(statusLabel.getFont().deriveFont(Font.PLAIN, 11f));
+        statusLabel.setForeground(new Color(120, 120, 120));
+        statusPanel.add(statusLabel);
+        statsLabel = new JLabel("");
+        statsLabel.setFont(statsLabel.getFont().deriveFont(Font.PLAIN, 11f));
+        statsLabel.setForeground(new Color(120, 120, 120));
+        statusPanel.add(Box.createHorizontalStrut(16));
+        statusPanel.add(statsLabel);
+        add(statusPanel, BorderLayout.SOUTH);
     }
 
     /**
@@ -482,6 +560,30 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         } else if (e.getSource() == transmissionSettingsBtn) {
             openTransmissionSettings();
         }
+    }
+
+    /**
+     * Test Connection — attempts to open the serial port with current settings.
+     * Shows a dialog with the result.
+     */
+    private void testConnection() {
+        String portName = String.valueOf(portBox.getSelectedItem());
+        int baud = parseInt(String.valueOf(baudBox.getSelectedItem()), 9600);
+
+        if (portName == null || portName.trim().isEmpty()) {
+            JOptionPane.showMessageDialog(this,
+                "Please select a port first.",
+                "Test Connection",
+                JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        JOptionPane.showMessageDialog(this,
+            "Test Connection feature requires the server-side port check.\n" +
+            "Port: " + portName + "\nBaud: " + baud + "\n\n" +
+            "Save the channel and deploy to verify the port opens successfully.",
+            "Test Connection",
+            JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void openTransmissionSettings() {
@@ -599,6 +701,21 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         healthIntervalField.setText(String.valueOf(config.getHealthInterval()));
         maxReconnectField.setText(String.valueOf(config.getMaxReconnects()));
         reconnectDelayField.setText(String.valueOf(config.getReconnectDelay()));
+
+        // Premium fields
+        portAliasField.setText(config.getPortAlias() != null ? config.getPortAlias() : "");
+        idleTimeoutField.setText(String.valueOf(config.getIdleTimeout()));
+        receiveIdleTimeoutField.setText(String.valueOf(config.getReceiveIdleTimeout()));
+
+        // PREMIUM: Destination extras (sender only)
+        if (isSender) {
+            processResponseBox.setSelected(config.isProcessResponse());
+            responseDelimiterField.setText(config.getResponseDelimiter() != null ? config.getResponseDelimiter() : "\\r\\n");
+            responseTimeoutField.setText(String.valueOf(config.getResponseTimeout()));
+            useTemplateBox.setSelected(config.isUseTemplate());
+            templateField.setText(config.getMessageTemplate() != null ? config.getMessageTemplate() : "");
+            checksumAlgoBox.setSelectedItem(config.getChecksumAlgorithm() != null ? config.getChecksumAlgorithm() : "ASTM_STANDARD");
+        }
     }
 
     private void fillPortConfig(SerialPortConfig config) {
@@ -610,9 +727,12 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         config.setFlowControl(flowBox.getSelectedIndex());
         config.setCharset(String.valueOf(charsetBox.getSelectedItem()));
         config.setBinaryMode(binaryBox.isSelected());
+        config.setPortAlias(portAliasField.getText());
         config.setReadTimeout(parseInt(readTimeoutField.getText(), 1000));
         config.setWriteTimeout(parseInt(writeTimeoutField.getText(), 1000));
         config.setBufferSize(parseInt(bufferSizeField.getText(), 4096));
+        config.setIdleTimeout(parseInt(idleTimeoutField.getText(), 0));
+        config.setReceiveIdleTimeout(parseInt(receiveIdleTimeoutField.getText(), 0));
         config.setSetDtr(dtrBox.isSelected());
         config.setSetRts(rtsBox.isSelected());
         config.setWaitCts(waitCtsBox.isSelected());
@@ -632,6 +752,16 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         config.setHealthInterval(parseInt(healthIntervalField.getText(), 5000));
         config.setMaxReconnects(parseInt(maxReconnectField.getText(), 10));
         config.setReconnectDelay(parseInt(reconnectDelayField.getText(), 5000));
+
+        // PREMIUM: Destination extras (sender only)
+        if (isSender) {
+            config.setProcessResponse(processResponseBox.isSelected());
+            config.setResponseDelimiter(responseDelimiterField.getText());
+            config.setResponseTimeout(parseInt(responseTimeoutField.getText(), 5000));
+            config.setUseTemplate(useTemplateBox.isSelected());
+            config.setMessageTemplate(templateField.getText());
+            config.setChecksumAlgorithm((String) checksumAlgoBox.getSelectedItem());
+        }
     }
 
     private int mapStopBitsFromString(String s) {

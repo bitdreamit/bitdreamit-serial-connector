@@ -40,6 +40,10 @@ public class SerialSourceConnector extends SourceConnector {
     private AtomicReference<Thread> healthThread = new AtomicReference<>();
     private ByteArrayOutputStream frameBuffer = new ByteArrayOutputStream();
 
+    // PREMIUM: Statistics and protocol logger
+    private SerialStatistics statistics = new SerialStatistics();
+    private ProtocolLogger protocolLogger = null;
+
     @Override
     public void onDeploy() {
         Object raw = getConnectorProperties();
@@ -55,8 +59,18 @@ public class SerialSourceConnector extends SourceConnector {
                 "clear <mirth>/extensions/.cache/ and restart Mirth.");
         }
         this.connectorProperties = (SerialReceiverProperties) raw;
+
+        // Initialize protocol logger if enabled
+        SerialPortConfig config = connectorProperties.getPortConfig();
+        if (config.isProtocolLoggingEnabled()) {
+            protocolLogger = new ProtocolLogger(getChannelId(), config.getPortName(), config.getMaxLogEntries());
+            logger.info("SerialSourceConnector.onDeploy: protocol logging ENABLED for channel " + getChannelId());
+        }
+
+        // Reset statistics on deploy
+        statistics.reset();
         logger.info("SerialSourceConnector.onDeploy: properties loaded for channel " + getChannelId() +
-                    ", port=" + connectorProperties.getPortConfig().getPortName());
+                    ", port=" + config.getPortName());
     }
 
     @Override
@@ -159,8 +173,19 @@ public class SerialSourceConnector extends SourceConnector {
                 if (bytesRead > 0) {
                     byte[] data = new byte[bytesRead];
                     System.arraycopy(buffer, 0, data, 0, bytesRead);
+
+                    // PREMIUM: Record statistics
+                    statistics.recordRead(bytesRead);
+
+                    // PREMIUM: Log protocol traffic
+                    if (protocolLogger != null) {
+                        protocolLogger.logIn(data, "raw read");
+                    }
+
                     if (logger.isDebugEnabled()) {
-                        logger.debug("Serial read " + bytesRead + " bytes from " + config.getPortName());
+                        logger.debug("Serial read " + bytesRead + " bytes from " + config.getPortName() +
+                                     " (total: " + statistics.getBytesRead() + " bytes, " +
+                                     statistics.getMessagesReceived() + " msgs)");
                     }
                     processBytes(data, config);
                 }
@@ -169,6 +194,7 @@ public class SerialSourceConnector extends SourceConnector {
                 break;
             } catch (Exception e) {
                 logger.error("Serial read error on " + config.getPortName(), e);
+                statistics.recordError();
                 eventController.dispatchEvent(new ErrorEvent(
                         getChannelId(), getMetaDataId(), null, ErrorEventType.SOURCE_CONNECTOR,
                         getConnectorProperties().getName(), "Serial read error", e.getMessage(), e));
@@ -192,8 +218,13 @@ public class SerialSourceConnector extends SourceConnector {
 
     private void dispatchRaw(byte[] data, SerialPortConfig config) {
         String payload = bytesToPayload(data, config);
-        try { dispatchRawMessage(new RawMessage(payload)); }
-        catch (ChannelException e) { logger.error("Failed to dispatch raw message", e); }
+        try {
+            dispatchRawMessage(new RawMessage(payload));
+            statistics.recordMessageReceived();
+        } catch (ChannelException e) {
+            logger.error("Failed to dispatch raw message", e);
+            statistics.recordError();
+        }
     }
 
     private void processLineMode(byte[] data, SerialPortConfig config) {
@@ -376,6 +407,7 @@ public class SerialSourceConnector extends SourceConnector {
                     if (reconnectAttempts < maxReconnect) {
                         logger.warn("Reconnecting... (" + (reconnectAttempts + 1) + "/" + maxReconnect +
                                     ") portDown=" + portDown + " readerDead=" + readerDead);
+                        statistics.recordReconnect();
                         try {
                             closePort();
                             openPort();
@@ -384,10 +416,11 @@ public class SerialSourceConnector extends SourceConnector {
                             reconnectAttempts = 0;
                         } catch (Exception e) {
                             reconnectAttempts++;
+                            statistics.recordError();
                             logger.error("Reconnect failed: " + e.getMessage());
                         }
                     } else {
-                        logger.error("Max reconnects reached.");
+                        logger.error("Max reconnects reached. Stats: " + statistics);
                         break;
                     }
                 } else {

@@ -14,6 +14,7 @@ import com.mirth.connect.server.controllers.ControllerFactory;
 import com.mirth.connect.server.controllers.EventController;
 import org.apache.log4j.Logger;
 
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.Charset;
 import java.util.Arrays;
 
@@ -33,22 +34,6 @@ public class SerialDestinationConnector extends DestinationConnector {
     private SerialPort serialPort;
 
     @Override
-    public void onDeploy() {
-        Object raw = getConnectorProperties();
-        if (raw == null) {
-            throw new IllegalStateException("SerialDestinationConnector.onDeploy: connectorProperties is null");
-        }
-        if (!(raw instanceof SerialDispatcherProperties)) {
-            throw new IllegalStateException(
-                "SerialDestinationConnector.onDeploy: expected SerialDispatcherProperties but got " +
-                raw.getClass().getName() + ". Clear <mirth>/extensions/.cache/ and restart Mirth.");
-        }
-        this.connectorProperties = (SerialDispatcherProperties) raw;
-        logger.info("SerialDestinationConnector.onDeploy: properties loaded for channel " + getChannelId() +
-                    ", port=" + connectorProperties.getPortConfig().getPortName());
-    }
-
-    @Override
     public void onUndeploy() {}
 
     @Override
@@ -64,7 +49,7 @@ public class SerialDestinationConnector extends DestinationConnector {
                 logger.info("Serial destination pooled on " + connectorProperties.getPortConfig().getPortName());
             } catch (Exception e) {
                 logger.error("SerialDestinationConnector.onStart FAILED for channel " + getChannelId() +
-                             ": " + e.getMessage(), e);
+                        ": " + e.getMessage(), e);
                 throw new RuntimeException("Failed to open serial destination: " + e.getMessage(), e);
             }
         }
@@ -85,6 +70,34 @@ public class SerialDestinationConnector extends DestinationConnector {
         onStop();
     }
 
+    // PREMIUM: Statistics and protocol logger
+    private SerialStatistics statistics = new SerialStatistics();
+    private ProtocolLogger protocolLogger = null;
+
+    @Override
+    public void onDeploy() {
+        Object raw = getConnectorProperties();
+        if (raw == null) {
+            throw new IllegalStateException("SerialDestinationConnector.onDeploy: connectorProperties is null");
+        }
+        if (!(raw instanceof SerialDispatcherProperties)) {
+            throw new IllegalStateException(
+                    "SerialDestinationConnector.onDeploy: expected SerialDispatcherProperties but got " +
+                            raw.getClass().getName() + ". Clear <mirth>/extensions/.cache/ and restart Mirth.");
+        }
+        this.connectorProperties = (SerialDispatcherProperties) raw;
+
+        // Initialize protocol logger if enabled
+        SerialPortConfig config = connectorProperties.getPortConfig();
+        if (config.isProtocolLoggingEnabled()) {
+            protocolLogger = new ProtocolLogger(getChannelId(), config.getPortName(), config.getMaxLogEntries());
+            logger.info("SerialDestinationConnector.onDeploy: protocol logging ENABLED");
+        }
+        statistics.reset();
+        logger.info("SerialDestinationConnector.onDeploy: properties loaded for channel " + getChannelId() +
+                ", port=" + config.getPortName());
+    }
+
     @Override
     public void replaceConnectorProperties(ConnectorProperties props, ConnectorMessage message) {
     }
@@ -103,16 +116,34 @@ public class SerialDestinationConnector extends DestinationConnector {
                 port = SerialPortManager.getOrOpenPort(config);
             }
 
+            // PREMIUM: Apply template if enabled (NextGen-style)
             String payload = message.getEncoded().getContent();
+            if (config.isUseTemplate() && config.getMessageTemplate() != null
+                    && !config.getMessageTemplate().isEmpty()) {
+                payload = applyTemplate(config.getMessageTemplate(), payload);
+            }
+
             byte[] data = buildFrame(payload, config);
+
+            // PREMIUM: Log outgoing data
+            if (protocolLogger != null) {
+                protocolLogger.logOut(data, "message " + message.getMessageId());
+            }
 
             int written = port.writeBytes(data, data.length);
             if (written < 0) {
                 throw new Exception("Failed to write to serial port " + config.getPortName());
             }
 
-            logger.info("Wrote " + written + " bytes to " + config.getPortName());
+            // PREMIUM: Record statistics
+            statistics.recordWrite(written);
+            statistics.recordMessageSent();
 
+            logger.info("Wrote " + written + " bytes to " + config.getPortName() +
+                    " (total: " + statistics.getBytesWritten() + " bytes, " +
+                    statistics.getMessagesSent() + " msgs)");
+
+            // ACK handling
             if (props.isWaitForAckAfterWrite()) {
                 byte[] ackBuffer = new byte[props.getAckPattern().length];
                 long start = System.currentTimeMillis();
@@ -120,12 +151,29 @@ public class SerialDestinationConnector extends DestinationConnector {
 
                 while (totalRead < ackBuffer.length && (System.currentTimeMillis() - start) < props.getAckTimeout()) {
                     int read = port.readBytes(ackBuffer, ackBuffer.length - totalRead);
-                    if (read > 0) totalRead += read;
+                    if (read > 0) {
+                        totalRead += read;
+                        if (protocolLogger != null) {
+                            byte[] ackData = new byte[read];
+                            System.arraycopy(ackBuffer, totalRead - read, ackData, 0, read);
+                            protocolLogger.logIn(ackData, "ACK");
+                        }
+                    }
                     else Thread.sleep(10);
                 }
 
                 if (totalRead < ackBuffer.length || !Arrays.equals(ackBuffer, props.getAckPattern())) {
+                    statistics.recordError();
                     throw new Exception("ACK timeout or mismatch on " + config.getPortName());
+                }
+            }
+
+            // PREMIUM: Response processing
+            String responseStr = null;
+            if (config.isProcessResponse()) {
+                responseStr = readResponse(port, config);
+                if (protocolLogger != null && responseStr != null) {
+                    protocolLogger.logIn(responseStr.getBytes(Charset.forName(config.getCharset())), "response");
                 }
             }
 
@@ -133,9 +181,10 @@ public class SerialDestinationConnector extends DestinationConnector {
                 SerialPortManager.releasePort(port.getSystemPortName(), true);
             }
 
-            return new Response(Status.SENT, "Sent " + written + " bytes");
+            return new Response(Status.SENT, responseStr != null ? responseStr : "Sent " + written + " bytes");
 
         } catch (Throwable t) {
+            statistics.recordError();
             logger.error("Serial write error on " + config.getPortName() + ": " + t.getMessage(), t);
             eventController.dispatchEvent(new ErrorEvent(
                     getChannelId(), getMetaDataId(), message.getMessageId(), ErrorEventType.DESTINATION_CONNECTOR,
@@ -145,6 +194,49 @@ public class SerialDestinationConnector extends DestinationConnector {
             }
             return new Response(Status.ERROR, "Serial write failed: " + t.getMessage());
         }
+    }
+
+    /**
+     * PREMIUM: Apply a NextGen-style template to the payload.
+     * Template can contain ${message} placeholder which is replaced with the actual message.
+     * Example template: "MSH|^~\\&|${message}|\r"
+     */
+    private String applyTemplate(String template, String message) {
+        return template.replace("${message}", message)
+                .replace("${msg}", message)
+                .replace("${payload}", message);
+    }
+
+    /**
+     * PREMIUM: Read response from the serial port after sending.
+     * Reads until delimiter is found or timeout is reached.
+     */
+    private String readResponse(SerialPort port, SerialPortConfig config) {
+        String delimiter = config.getResponseDelimiter();
+        if (delimiter == null || delimiter.isEmpty()) delimiter = "\\r\\n";
+        delimiter = delimiter.replace("\\r", "\r").replace("\\n", "\n").replace("\\t", "\t");
+
+        Charset charset = Charset.forName(config.getCharset());
+        long start = System.currentTimeMillis();
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        byte[] buf = new byte[256];
+
+        while (System.currentTimeMillis() - start < config.getResponseTimeout()) {
+            int read = port.readBytes(buf, buf.length);
+            if (read > 0) {
+                buffer.write(buf, 0, read);
+                String current = new String(buffer.toByteArray(), charset);
+                if (current.contains(delimiter)) {
+                    return current.substring(0, current.indexOf(delimiter));
+                }
+            } else {
+                try { Thread.sleep(10); } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+        return buffer.size() > 0 ? new String(buffer.toByteArray(), charset) : null;
     }
 
     private byte[] buildFrame(String payload, SerialPortConfig config) throws Exception {
@@ -196,10 +288,8 @@ public class SerialDestinationConnector extends DestinationConnector {
                 if (start.length == 0) start = new byte[]{0x02};
                 if (end.length == 0) end = new byte[]{0x03};
 
-                int sum = 0;
-                for (byte b : payloadBytes) sum = (sum + b) & 0xFF;
-                String chkStr = String.format("%02X", sum).substring(0, 2);
-                byte[] chkBytes = chkStr.getBytes(charset);
+                // PREMIUM: Custom checksum algorithm
+                byte[] chkBytes = calculateChecksum(payloadBytes, config.getChecksumAlgorithm(), charset);
 
                 byte[] crlf = new byte[]{0x0D, 0x0A};
                 byte[] astmResult = new byte[start.length + payloadBytes.length + end.length + chkBytes.length + crlf.length];
@@ -238,6 +328,39 @@ public class SerialDestinationConnector extends DestinationConnector {
     private String unescapeDelimiter(String delim) {
         if (delim == null) return "\r\n";
         return delim.replace("\\r", "\r").replace("\\n", "\n").replace("\\t", "\t");
+    }
+
+    /**
+     * PREMIUM: Calculate checksum using the configured algorithm.
+     * Supports: ASTM_STANDARD (mod 256 hex), MOD256, XOR, NONE
+     */
+    private byte[] calculateChecksum(byte[] data, String algorithm, Charset charset) {
+        if (algorithm == null) algorithm = "ASTM_STANDARD";
+
+        switch (algorithm.toUpperCase()) {
+            case "NONE":
+                return new byte[0];
+
+            case "XOR": {
+                int xor = 0;
+                for (byte b : data) xor ^= (b & 0xFF);
+                return String.format("%02X", xor & 0xFF).getBytes(charset);
+            }
+
+            case "MOD256": {
+                int sum = 0;
+                for (byte b : data) sum = (sum + (b & 0xFF)) % 256;
+                return String.format("%03d", sum).getBytes(charset);
+            }
+
+            case "ASTM_STANDARD":
+            default: {
+                // Standard ASTM E1381 checksum: sum of bytes mod 256, as 2-digit hex
+                int sum = 0;
+                for (byte b : data) sum = (sum + b) & 0xFF;
+                return String.format("%02X", sum).substring(0, 2).getBytes(charset);
+            }
+        }
     }
 
     private byte[] parseHexString(String hex) {

@@ -25,11 +25,14 @@ public class SerialPortConfig implements Serializable, Cloneable {
     private int flowControl = 0;
     private String charset = "UTF-8";
     private boolean binaryMode = false;
+    private String portAlias = "";  // PREMIUM: Friendly name like "Analyzer 1"
 
     // Timeouts and buffer
     private int readTimeout = 1000;
     private int writeTimeout = 1000;
     private int bufferSize = 4096;
+    private int idleTimeout = 0;          // PROFESSIONAL: Close after N ms inactivity (0=disabled)
+    private int receiveIdleTimeout = 0;   // PREMIUM: Close if no data for N ms (0=disabled)
 
     // Signal control
     private boolean setDtr = true;
@@ -48,12 +51,15 @@ public class SerialPortConfig implements Serializable, Cloneable {
     // Auto-detect
     private boolean autoDetectPort = false;
     private boolean autoDetectBaud = false;
+    private boolean customBaudRate = false;  // PREMIUM: Allow arbitrary baud rates
 
     // Health monitor
     private boolean healthMonitorEnabled = true;
     private int healthInterval = 5000;
     private int maxReconnects = 10;
     private int reconnectDelay = 5000;
+    private int maxReconnectDelay = 60000;  // PREMIUM: Cap for exponential backoff
+    private double backoffMultiplier = 1.5; // PREMIUM: Exponential backoff factor
 
     // Protocol analyzer
     private boolean protocolLoggingEnabled = false;
@@ -70,6 +76,19 @@ public class SerialPortConfig implements Serializable, Cloneable {
     private String commitAckBytes = "06";
     private String commitNakBytes = "15";
     private int maxRetryCount = 2;
+
+    // PREMIUM: Custom checksum algorithm for ASTM
+    // Values: "ASTM_STANDARD" (default), "MOD256", "XOR", "CUSTOM"
+    private String checksumAlgorithm = "ASTM_STANDARD";
+
+    // PREMIUM: Response processing for destination
+    private boolean processResponse = false;
+    private String responseDelimiter = "\\r\\n";
+    private int responseTimeout = 5000;
+
+    // PREMIUM: NextGen-style template for destination
+    private String messageTemplate = "";
+    private boolean useTemplate = false;
 
     // ===== Getters and Setters =====
 
@@ -96,6 +115,30 @@ public class SerialPortConfig implements Serializable, Cloneable {
 
     public boolean isBinaryMode() { return binaryMode; }
     public void setBinaryMode(boolean binaryMode) { this.binaryMode = binaryMode; }
+
+    // PREMIUM: Port alias
+    public String getPortAlias() { return portAlias; }
+    public void setPortAlias(String portAlias) { this.portAlias = portAlias; }
+
+    // PROFESSIONAL: Idle timeout
+    public int getIdleTimeout() { return idleTimeout; }
+    public void setIdleTimeout(int idleTimeout) { this.idleTimeout = idleTimeout; }
+
+    // PREMIUM: Receive idle timeout
+    public int getReceiveIdleTimeout() { return receiveIdleTimeout; }
+    public void setReceiveIdleTimeout(int receiveIdleTimeout) { this.receiveIdleTimeout = receiveIdleTimeout; }
+
+    // PREMIUM: Custom baud rate
+    public boolean isCustomBaudRate() { return customBaudRate; }
+    public void setCustomBaudRate(boolean customBaudRate) { this.customBaudRate = customBaudRate; }
+
+    // PREMIUM: Max reconnect delay
+    public int getMaxReconnectDelay() { return maxReconnectDelay; }
+    public void setMaxReconnectDelay(int maxReconnectDelay) { this.maxReconnectDelay = maxReconnectDelay; }
+
+    // PREMIUM: Backoff multiplier
+    public double getBackoffMultiplier() { return backoffMultiplier; }
+    public void setBackoffMultiplier(double backoffMultiplier) { this.backoffMultiplier = backoffMultiplier; }
 
     public int getReadTimeout() { return readTimeout; }
     public void setReadTimeout(int readTimeout) { this.readTimeout = readTimeout; }
@@ -184,6 +227,24 @@ public class SerialPortConfig implements Serializable, Cloneable {
     public int getMaxRetryCount() { return maxRetryCount; }
     public void setMaxRetryCount(int maxRetryCount) { this.maxRetryCount = maxRetryCount; }
 
+    // PREMIUM: Custom checksum algorithm
+    public String getChecksumAlgorithm() { return checksumAlgorithm; }
+    public void setChecksumAlgorithm(String checksumAlgorithm) { this.checksumAlgorithm = checksumAlgorithm; }
+
+    // PREMIUM: Response processing
+    public boolean isProcessResponse() { return processResponse; }
+    public void setProcessResponse(boolean processResponse) { this.processResponse = processResponse; }
+    public String getResponseDelimiter() { return responseDelimiter; }
+    public void setResponseDelimiter(String responseDelimiter) { this.responseDelimiter = responseDelimiter; }
+    public int getResponseTimeout() { return responseTimeout; }
+    public void setResponseTimeout(int responseTimeout) { this.responseTimeout = responseTimeout; }
+
+    // PREMIUM: Message template
+    public String getMessageTemplate() { return messageTemplate; }
+    public void setMessageTemplate(String messageTemplate) { this.messageTemplate = messageTemplate; }
+    public boolean isUseTemplate() { return useTemplate; }
+    public void setUseTemplate(boolean useTemplate) { this.useTemplate = useTemplate; }
+
     public int[] getAutoBaudRates() {
         return new int[]{9600, 19200, 38400, 57500, 115200};
     }
@@ -205,32 +266,45 @@ public class SerialPortConfig implements Serializable, Cloneable {
         return baudRate == that.baudRate && dataBits == that.dataBits && stopBits == that.stopBits
                 && parity == that.parity && flowControl == that.flowControl && binaryMode == that.binaryMode
                 && readTimeout == that.readTimeout && writeTimeout == that.writeTimeout && bufferSize == that.bufferSize
+                && idleTimeout == that.idleTimeout && receiveIdleTimeout == that.receiveIdleTimeout
                 && setDtr == that.setDtr && setRts == that.setRts && waitCts == that.waitCts
                 && waitDsr == that.waitDsr && waitDcd == that.waitDcd && signalTimeout == that.signalTimeout
                 && sendBreak == that.sendBreak && breakDuration == that.breakDuration
                 && flushOnOpen == that.flushOnOpen && flushOnClose == that.flushOnClose
                 && autoDetectPort == that.autoDetectPort && autoDetectBaud == that.autoDetectBaud
+                && customBaudRate == that.customBaudRate
                 && healthMonitorEnabled == that.healthMonitorEnabled && healthInterval == that.healthInterval
                 && maxReconnects == that.maxReconnects && reconnectDelay == that.reconnectDelay
+                && maxReconnectDelay == that.maxReconnectDelay
+                && Double.compare(backoffMultiplier, that.backoffMultiplier) == 0
                 && protocolLoggingEnabled == that.protocolLoggingEnabled && maxLogEntries == that.maxLogEntries
                 && useMLLPv2 == that.useMLLPv2 && maxRetryCount == that.maxRetryCount
                 && Objects.equals(portName, that.portName) && Objects.equals(charset, that.charset)
+                && Objects.equals(portAlias, that.portAlias)
                 && Objects.equals(transmissionMode, that.transmissionMode)
                 && Objects.equals(lineDelimiter, that.lineDelimiter)
                 && Objects.equals(startOfMessageBytes, that.startOfMessageBytes)
                 && Objects.equals(endOfMessageBytes, that.endOfMessageBytes)
                 && Objects.equals(commitAckBytes, that.commitAckBytes)
-                && Objects.equals(commitNakBytes, that.commitNakBytes);
+                && Objects.equals(commitNakBytes, that.commitNakBytes)
+                && Objects.equals(checksumAlgorithm, that.checksumAlgorithm)
+                && processResponse == that.processResponse
+                && Objects.equals(responseDelimiter, that.responseDelimiter)
+                && responseTimeout == that.responseTimeout
+                && useTemplate == that.useTemplate
+                && Objects.equals(messageTemplate, that.messageTemplate);
     }
 
     @Override
     public int hashCode() {
         return Objects.hash(portName, baudRate, dataBits, stopBits, parity, flowControl, charset,
-                binaryMode, readTimeout, writeTimeout, bufferSize, setDtr, setRts, waitCts, waitDsr,
-                waitDcd, signalTimeout, sendBreak, breakDuration, flushOnOpen, flushOnClose,
-                autoDetectPort, autoDetectBaud, healthMonitorEnabled, healthInterval, maxReconnects,
-                reconnectDelay, protocolLoggingEnabled, maxLogEntries, transmissionMode,
+                binaryMode, portAlias, readTimeout, writeTimeout, bufferSize, idleTimeout, receiveIdleTimeout,
+                setDtr, setRts, waitCts, waitDsr, waitDcd, signalTimeout, sendBreak, breakDuration,
+                flushOnOpen, flushOnClose, autoDetectPort, autoDetectBaud, customBaudRate,
+                healthMonitorEnabled, healthInterval, maxReconnects, reconnectDelay, maxReconnectDelay,
+                backoffMultiplier, protocolLoggingEnabled, maxLogEntries, transmissionMode,
                 lineDelimiter, startOfMessageBytes, endOfMessageBytes, useMLLPv2,
-                commitAckBytes, commitNakBytes, maxRetryCount);
+                commitAckBytes, commitNakBytes, maxRetryCount, checksumAlgorithm,
+                processResponse, responseDelimiter, responseTimeout, useTemplate, messageTemplate);
     }
 }
