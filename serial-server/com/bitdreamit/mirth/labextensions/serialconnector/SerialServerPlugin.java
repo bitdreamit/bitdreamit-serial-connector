@@ -33,7 +33,8 @@ public class SerialServerPlugin implements ServicePlugin {
         SerialPortConfig.class,
         ProtocolLogEntry.class,
         ProtocolLogEntry.Direction.class,
-        SerialStatistics.class
+        SerialStatistics.class,
+        SerialTransmissionModeProperties.class
     };
 
     private static final List<String> EXACT_TYPES = Arrays.asList(
@@ -42,7 +43,8 @@ public class SerialServerPlugin implements ServicePlugin {
         "com.bitdreamit.mirth.labextensions.serialconnector.SerialPortConfig",
         "com.bitdreamit.mirth.labextensions.serialconnector.ProtocolLogEntry",
         "com.bitdreamit.mirth.labextensions.serialconnector.ProtocolLogEntry$Direction",
-        "com.bitdreamit.mirth.labextensions.serialconnector.SerialStatistics"
+        "com.bitdreamit.mirth.labextensions.serialconnector.SerialStatistics",
+        "com.bitdreamit.mirth.labextensions.serialconnector.SerialTransmissionModeProperties"
     );
 
     private static final List<String> WILDCARD_TYPES = Arrays.asList(
@@ -76,7 +78,16 @@ public class SerialServerPlugin implements ServicePlugin {
             xstream.alias("serialPortConfig", SerialPortConfig.class);
             xstream.alias("protocolLogEntry", ProtocolLogEntry.class);
             xstream.alias("serialStatistics", SerialStatistics.class);
+            xstream.alias("serialTransmissionModeProperties", SerialTransmissionModeProperties.class);
             logger.info("SerialServerPlugin: manual aliases registered on main XStream instance.");
+
+            // 4. PREMIUM: Register built-in transmission mode providers dynamically
+            //    New modes can be added as separate plugins without modifying connectors.
+            SerialBuiltinModeProviders.registerAll();
+            logger.info("SerialServerPlugin: registered " +
+                        SerialTransmissionModeRegistry.getServerProviders().size() +
+                        " transmission mode providers: " +
+                        Arrays.toString(SerialTransmissionModeRegistry.getAvailableModes()));
 
             logger.info("SerialServerPlugin: registration complete — " +
                         PLUGIN_CLASSES.length + " classes on BOTH XStream instances.");

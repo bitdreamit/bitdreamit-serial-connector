@@ -204,15 +204,45 @@ public class SerialSourceConnector extends SourceConnector {
 
     private void processBytes(byte[] data, SerialPortConfig config) throws Exception {
         String mode = config.getTransmissionMode();
-        switch (mode == null ? "RAW" : mode.toUpperCase()) {
-            case "RAW":           dispatchRaw(data, config); break;
-            case "LINE":          processLineMode(data, config); break;
-            case "FRAME":         processFrameMode(data, config); break;
-            case "MLLP":          processMllpMode(data, config); break;
-            case "ASTM":          processAstmMode(data, config); break;
-            case "BASIC":         processLineMode(data, config); break;
-            case "ASTM_E1381":    processAstmMode(data, config); break;
-            default:              dispatchRaw(data, config);
+        if (mode == null) mode = "RAW";
+
+        // PREMIUM: Use dynamic transmission mode provider (like TCP connector)
+        SerialTransmissionModeProvider provider =
+                SerialTransmissionModeRegistry.getServerProvider(mode);
+
+        if (provider == null) {
+            // Fallback to RAW if provider not found (e.g. custom mode plugin not installed)
+            logger.warn("Transmission mode provider not found for '" + mode +
+                        "', falling back to RAW. Available modes: " +
+                        java.util.Arrays.toString(SerialTransmissionModeRegistry.getAvailableModes()));
+            dispatchRaw(data, config);
+            return;
+        }
+
+        // Use the provider to process incoming bytes into complete messages
+        String[] messages = provider.processBytes(data, provider.getDefaultProperties(), config);
+
+        if (messages != null) {
+            for (String msg : messages) {
+                try {
+                    dispatchRawMessage(new RawMessage(msg));
+                    statistics.recordMessageReceived();
+
+                    // If provider sends ACK (e.g. MLLP, ASTM), send it back
+                    if (provider.sendsAck() && serialPort != null && serialPort.isOpen()) {
+                        byte[] ack = provider.buildAck(msg, provider.getDefaultProperties(), config);
+                        if (ack.length > 0) {
+                            serialPort.writeBytes(ack, ack.length);
+                            if (protocolLogger != null) {
+                                protocolLogger.logOut(ack, "ACK");
+                            }
+                        }
+                    }
+                } catch (ChannelException e) {
+                    logger.error("Failed to dispatch message via " + mode + " provider", e);
+                    statistics.recordError();
+                }
+            }
         }
     }
 

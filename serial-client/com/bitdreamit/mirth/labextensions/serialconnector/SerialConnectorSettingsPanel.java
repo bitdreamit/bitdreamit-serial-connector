@@ -317,12 +317,24 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         binaryBox = new MirthCheckBox("Binary (Base64)");
         addRowCustom(contentPanel, layout, "Binary Mode:", binaryBox, row++);
 
-        // Transmission Mode
+        // Transmission Mode — populated DYNAMICALLY from registry (like TCP connector)
         JPanel modePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         modePanel.setBackground(Color.WHITE);
         modePanel.setOpaque(true);
         transmissionModeBox = new MirthComboBox();
-        transmissionModeBox.setModel(new DefaultComboBoxModel<>(new String[]{"RAW", "LINE", "FRAME", "MLLP", "ASTM"}));
+        // PREMIUM: Populate modes dynamically from SerialTransmissionModeRegistry
+        // This allows new modes (MLLP, ASTM, custom) to be added as separate plugins
+        // without modifying this file.
+        java.util.Map<String, SerialTransmissionModeClientProvider> clientProviders =
+                SerialTransmissionModeRegistry.getClientProviders();
+        if (clientProviders.isEmpty()) {
+            // Fallback to built-in modes if registry not populated yet
+            transmissionModeBox.setModel(new DefaultComboBoxModel<>(
+                    new String[]{"RAW", "LINE", "FRAME", "MLLP", "ASTM"}));
+        } else {
+            transmissionModeBox.setModel(new DefaultComboBoxModel<>(
+                    clientProviders.keySet().toArray(new String[0])));
+        }
         transmissionModeBox.setPreferredSize(new Dimension(100, 22));
         transmissionModeBox.addActionListener(this);
         modePanel.add(transmissionModeBox);

@@ -41,7 +41,8 @@ public class SerialClientPlugin extends ClientPlugin {
         SerialPortConfig.class,
         ProtocolLogEntry.class,
         ProtocolLogEntry.Direction.class,
-        SerialStatistics.class
+        SerialStatistics.class,
+        SerialTransmissionModeProperties.class
     };
 
     /** Fully-qualified class names for allowTypes (exact matches). */
@@ -51,7 +52,8 @@ public class SerialClientPlugin extends ClientPlugin {
         "com.bitdreamit.mirth.labextensions.serialconnector.SerialPortConfig",
         "com.bitdreamit.mirth.labextensions.serialconnector.ProtocolLogEntry",
         "com.bitdreamit.mirth.labextensions.serialconnector.ProtocolLogEntry$Direction",
-        "com.bitdreamit.mirth.labextensions.serialconnector.SerialStatistics"
+        "com.bitdreamit.mirth.labextensions.serialconnector.SerialStatistics",
+        "com.bitdreamit.mirth.labextensions.serialconnector.SerialTransmissionModeProperties"
     );
 
     /** Wildcard patterns for allowTypesByWildcard. */
@@ -84,7 +86,17 @@ public class SerialClientPlugin extends ClientPlugin {
             xstream.alias("serialPortConfig", SerialPortConfig.class);
             xstream.alias("protocolLogEntry", ProtocolLogEntry.class);
             xstream.alias("serialStatistics", SerialStatistics.class);
+            xstream.alias("serialTransmissionModeProperties", SerialTransmissionModeProperties.class);
             logger.info("SerialClientPlugin: manual aliases registered on main XStream instance.");
+
+            // 4. PREMIUM: Register built-in transmission mode client providers
+            //    This populates the Transmission Mode dropdown dynamically.
+            //    New modes added as separate plugins will auto-register here.
+            SerialBuiltinModeClientProviders.registerAll();
+            logger.info("SerialClientPlugin: registered " +
+                        SerialTransmissionModeRegistry.getClientProviders().size() +
+                        " client transmission mode providers: " +
+                        Arrays.toString(SerialTransmissionModeRegistry.getClientProviders().keySet().toArray()));
 
             logger.info("SerialClientPlugin: registration complete — " +
                         PLUGIN_CLASSES.length + " classes on BOTH XStream instances.");

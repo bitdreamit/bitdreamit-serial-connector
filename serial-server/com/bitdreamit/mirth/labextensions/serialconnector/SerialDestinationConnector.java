@@ -14,7 +14,6 @@ import com.mirth.connect.server.controllers.ControllerFactory;
 import com.mirth.connect.server.controllers.EventController;
 import org.apache.log4j.Logger;
 
-import java.io.ByteArrayOutputStream;
 import java.nio.charset.Charset;
 import java.util.Arrays;
 
@@ -49,7 +48,7 @@ public class SerialDestinationConnector extends DestinationConnector {
                 logger.info("Serial destination pooled on " + connectorProperties.getPortConfig().getPortName());
             } catch (Exception e) {
                 logger.error("SerialDestinationConnector.onStart FAILED for channel " + getChannelId() +
-                        ": " + e.getMessage(), e);
+                             ": " + e.getMessage(), e);
                 throw new RuntimeException("Failed to open serial destination: " + e.getMessage(), e);
             }
         }
@@ -82,8 +81,8 @@ public class SerialDestinationConnector extends DestinationConnector {
         }
         if (!(raw instanceof SerialDispatcherProperties)) {
             throw new IllegalStateException(
-                    "SerialDestinationConnector.onDeploy: expected SerialDispatcherProperties but got " +
-                            raw.getClass().getName() + ". Clear <mirth>/extensions/.cache/ and restart Mirth.");
+                "SerialDestinationConnector.onDeploy: expected SerialDispatcherProperties but got " +
+                raw.getClass().getName() + ". Clear <mirth>/extensions/.cache/ and restart Mirth.");
         }
         this.connectorProperties = (SerialDispatcherProperties) raw;
 
@@ -95,7 +94,7 @@ public class SerialDestinationConnector extends DestinationConnector {
         }
         statistics.reset();
         logger.info("SerialDestinationConnector.onDeploy: properties loaded for channel " + getChannelId() +
-                ", port=" + config.getPortName());
+                    ", port=" + config.getPortName());
     }
 
     @Override
@@ -140,8 +139,8 @@ public class SerialDestinationConnector extends DestinationConnector {
             statistics.recordMessageSent();
 
             logger.info("Wrote " + written + " bytes to " + config.getPortName() +
-                    " (total: " + statistics.getBytesWritten() + " bytes, " +
-                    statistics.getMessagesSent() + " msgs)");
+                        " (total: " + statistics.getBytesWritten() + " bytes, " +
+                        statistics.getMessagesSent() + " msgs)");
 
             // ACK handling
             if (props.isWaitForAckAfterWrite()) {
@@ -203,8 +202,8 @@ public class SerialDestinationConnector extends DestinationConnector {
      */
     private String applyTemplate(String template, String message) {
         return template.replace("${message}", message)
-                .replace("${msg}", message)
-                .replace("${payload}", message);
+                       .replace("${msg}", message)
+                       .replace("${payload}", message);
     }
 
     /**
@@ -241,88 +240,25 @@ public class SerialDestinationConnector extends DestinationConnector {
 
     private byte[] buildFrame(String payload, SerialPortConfig config) throws Exception {
         String mode = config.getTransmissionMode();
-        Charset charset = Charset.forName(config.getCharset());
-        byte[] payloadBytes = config.isBinaryMode()
-                ? java.util.Base64.getDecoder().decode(payload)
-                : payload.getBytes(charset);
-
         if (mode == null) mode = "RAW";
-        switch (mode.toUpperCase()) {
-            case "RAW":
-                return payloadBytes;
 
-            case "LINE": {
-                String delimiter = unescapeDelimiter(config.getLineDelimiter());
-                byte[] delimBytes = delimiter.getBytes(charset);
-                byte[] lineResult = new byte[payloadBytes.length + delimBytes.length];
-                System.arraycopy(payloadBytes, 0, lineResult, 0, payloadBytes.length);
-                System.arraycopy(delimBytes, 0, lineResult, payloadBytes.length, delimBytes.length);
-                return lineResult;
-            }
+        // PREMIUM: Use dynamic transmission mode provider (like TCP connector)
+        SerialTransmissionModeProvider provider =
+                SerialTransmissionModeRegistry.getServerProvider(mode);
 
-            case "FRAME": {
-                byte[] start = parseHexString(config.getStartOfMessageBytes());
-                byte[] end = parseHexString(config.getEndOfMessageBytes());
-                byte[] frameResult = new byte[start.length + payloadBytes.length + end.length];
-                System.arraycopy(start, 0, frameResult, 0, start.length);
-                System.arraycopy(payloadBytes, 0, frameResult, start.length, payloadBytes.length);
-                System.arraycopy(end, 0, frameResult, start.length + payloadBytes.length, end.length);
-                return frameResult;
-            }
-
-            case "MLLP": {
-                byte[] start = parseHexString(config.getStartOfMessageBytes());
-                byte[] end = parseHexString(config.getEndOfMessageBytes());
-                if (start.length == 0) start = new byte[]{0x0B};
-                if (end.length == 0) end = new byte[]{0x1C, 0x0D};
-                byte[] mllpResult = new byte[start.length + payloadBytes.length + end.length];
-                System.arraycopy(start, 0, mllpResult, 0, start.length);
-                System.arraycopy(payloadBytes, 0, mllpResult, start.length, payloadBytes.length);
-                System.arraycopy(end, 0, mllpResult, start.length + payloadBytes.length, end.length);
-                return mllpResult;
-            }
-
-            case "ASTM": {
-                byte[] start = parseHexString(config.getStartOfMessageBytes());
-                byte[] end = parseHexString(config.getEndOfMessageBytes());
-                if (start.length == 0) start = new byte[]{0x02};
-                if (end.length == 0) end = new byte[]{0x03};
-
-                // PREMIUM: Custom checksum algorithm
-                byte[] chkBytes = calculateChecksum(payloadBytes, config.getChecksumAlgorithm(), charset);
-
-                byte[] crlf = new byte[]{0x0D, 0x0A};
-                byte[] astmResult = new byte[start.length + payloadBytes.length + end.length + chkBytes.length + crlf.length];
-                int pos = 0;
-                System.arraycopy(start, 0, astmResult, pos, start.length); pos += start.length;
-                System.arraycopy(payloadBytes, 0, astmResult, pos, payloadBytes.length); pos += payloadBytes.length;
-                System.arraycopy(end, 0, astmResult, pos, end.length); pos += end.length;
-                System.arraycopy(chkBytes, 0, astmResult, pos, chkBytes.length); pos += chkBytes.length;
-                System.arraycopy(crlf, 0, astmResult, pos, crlf.length);
-                return astmResult;
-            }
-
-            case "BASIC":
-                return buildFrame(payload, "LINE", config, charset, payloadBytes);
-
-            case "ASTM_E1381":
-                return buildFrame(payload, "ASTM", config, charset, payloadBytes);
-
-            default:
-                return payloadBytes;
+        if (provider == null) {
+            // Fallback to RAW bytes if provider not found
+            logger.warn("Transmission mode provider not found for '" + mode +
+                        "', falling back to RAW. Available modes: " +
+                        java.util.Arrays.toString(SerialTransmissionModeRegistry.getAvailableModes()));
+            Charset cs = Charset.forName(config.getCharset());
+            return config.isBinaryMode()
+                    ? java.util.Base64.getDecoder().decode(payload)
+                    : payload.getBytes(cs);
         }
-    }
 
-    private byte[] buildFrame(String payload, String mode, SerialPortConfig config,
-                              Charset charset, byte[] payloadBytes) throws Exception {
-        // Internal helper for BASIC→LINE and ASTM_E1381→ASTM compatibility
-        String save = config.getTransmissionMode();
-        try {
-            config.setTransmissionMode(mode);
-            return buildFrame(payload, config);
-        } finally {
-            config.setTransmissionMode(save);
-        }
+        // Use the provider to frame the outgoing message
+        return provider.frameMessage(payload, provider.getDefaultProperties(), config);
     }
 
     private String unescapeDelimiter(String delim) {
