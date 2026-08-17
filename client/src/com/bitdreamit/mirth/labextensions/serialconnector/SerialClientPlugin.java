@@ -41,8 +41,7 @@ public class SerialClientPlugin extends ClientPlugin {
         SerialPortConfig.class,
         ProtocolLogEntry.class,
         ProtocolLogEntry.Direction.class,
-        SerialStatistics.class,
-        SerialTransmissionModeProperties.class
+        SerialStatistics.class
     };
 
     /** Fully-qualified class names for allowTypes (exact matches). */
@@ -53,12 +52,16 @@ public class SerialClientPlugin extends ClientPlugin {
         "com.bitdreamit.mirth.labextensions.serialconnector.ProtocolLogEntry",
         "com.bitdreamit.mirth.labextensions.serialconnector.ProtocolLogEntry$Direction",
         "com.bitdreamit.mirth.labextensions.serialconnector.SerialStatistics",
-        "com.bitdreamit.mirth.labextensions.serialconnector.SerialTransmissionModeProperties"
+        // DYNAMIC: Allow Mirth's built-in TransmissionModeProperties and all subclasses
+        "com.mirth.connect.model.transmission.TransmissionModeProperties",
+        "com.mirth.connect.model.transmission.framemode.FrameModeProperties"
     );
 
     /** Wildcard patterns for allowTypesByWildcard. */
     private static final List<String> WILDCARD_TYPES = Arrays.asList(
-        "com.bitdreamit.mirth.labextensions.serialconnector.**"
+        "com.bitdreamit.mirth.labextensions.serialconnector.**",
+        // DYNAMIC: Allow any transmission mode properties (MLLP, ASTM, custom)
+        "com.mirth.connect.model.transmission.**"
     );
 
     public SerialClientPlugin(String pluginName) {
@@ -86,17 +89,12 @@ public class SerialClientPlugin extends ClientPlugin {
             xstream.alias("serialPortConfig", SerialPortConfig.class);
             xstream.alias("protocolLogEntry", ProtocolLogEntry.class);
             xstream.alias("serialStatistics", SerialStatistics.class);
-            xstream.alias("serialTransmissionModeProperties", SerialTransmissionModeProperties.class);
             logger.info("SerialClientPlugin: manual aliases registered on main XStream instance.");
 
-            // 4. PREMIUM: Register built-in transmission mode client providers
-            //    This populates the Transmission Mode dropdown dynamically.
-            //    New modes added as separate plugins will auto-register here.
-            SerialBuiltinModeClientProviders.registerAll();
-            logger.info("SerialClientPlugin: registered " +
-                        SerialTransmissionModeRegistry.getClientProviders().size() +
-                        " client transmission mode providers: " +
-                        Arrays.toString(SerialTransmissionModeRegistry.getClientProviders().keySet().toArray()));
+            // DYNAMIC: Transmission modes are loaded from Mirth's LoadedExtensions
+            // at runtime — NO custom registry needed. Same as TCP connector.
+            // When you install the ASTM E1381 extension, it automatically appears.
+            logger.info("SerialClientPlugin: transmission modes loaded dynamically from Mirth LoadedExtensions.");
 
             logger.info("SerialClientPlugin: registration complete — " +
                         PLUGIN_CLASSES.length + " classes on BOTH XStream instances.");

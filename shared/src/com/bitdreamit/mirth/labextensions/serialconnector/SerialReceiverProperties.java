@@ -4,6 +4,7 @@ import com.mirth.connect.donkey.model.channel.ConnectorProperties;
 import com.mirth.connect.donkey.model.channel.SourceConnectorProperties;
 import com.mirth.connect.donkey.model.channel.SourceConnectorPropertiesInterface;
 import com.mirth.connect.donkey.util.DonkeyElement;
+import com.mirth.connect.model.transmission.TransmissionModeProperties;
 import com.thoughtworks.xstream.annotations.XStreamAlias;
 
 import java.util.Objects;
@@ -11,11 +12,10 @@ import java.util.Objects;
 /**
  * Serial Source Properties.
  *
- * CRITICAL: This class MUST exist ONLY in serial-shared.jar.
- * Do NOT duplicate it in serial-server or serial-client.
+ * Uses Mirth's TransmissionModeProperties framework — same as TCP.
+ * Modes are loaded DYNAMICALLY from Mirth's extension system.
  *
- * Implements SourceConnectorPropertiesInterface — REQUIRED by Mirth for source connectors.
- * Without this interface, channel enable throws ClassCastException silently.
+ * CRITICAL: This class MUST exist ONLY in serial-shared.jar.
  */
 @XStreamAlias("serialReceiverProperties")
 public class SerialReceiverProperties extends ConnectorProperties implements SourceConnectorPropertiesInterface {
@@ -23,6 +23,11 @@ public class SerialReceiverProperties extends ConnectorProperties implements Sou
 
     private SerialPortConfig portConfig = new SerialPortConfig();
     private SourceConnectorProperties sourceConnectorProperties = new SourceConnectorProperties();
+
+    // DYNAMIC: Stores the transmission mode properties (MLLP, ASTM, Frame, etc.)
+    // This is polymorphic — the actual subclass depends on which mode was selected.
+    // Loaded dynamically from Mirth's TransmissionModePlugin registry.
+    private TransmissionModeProperties transmissionModeProperties;
 
     public SerialReceiverProperties() {
     }
@@ -48,6 +53,15 @@ public class SerialReceiverProperties extends ConnectorProperties implements Sou
 
     public void setSourceConnectorProperties(SourceConnectorProperties sourceConnectorProperties) {
         this.sourceConnectorProperties = sourceConnectorProperties;
+    }
+
+    // DYNAMIC: Transmission mode properties (polymorphic — stores MLLP, ASTM, Frame, etc.)
+    public TransmissionModeProperties getTransmissionModeProperties() {
+        return transmissionModeProperties;
+    }
+
+    public void setTransmissionModeProperties(TransmissionModeProperties transmissionModeProperties) {
+        this.transmissionModeProperties = transmissionModeProperties;
     }
 
     @Override
@@ -78,11 +92,8 @@ public class SerialReceiverProperties extends ConnectorProperties implements Sou
         try {
             SerialReceiverProperties copy = (SerialReceiverProperties) super.clone();
             copy.portConfig = (this.portConfig != null) ? this.portConfig.clone() : new SerialPortConfig();
-            // Shallow copy of sourceConnectorProperties — its clone() is protected
-            // in some Mirth SDK versions and cannot be called directly.
-            // This is safe: Mirth re-populates sourceConnectorProperties from the
-            // channel XML on deployment, so the shared reference is overwritten.
             copy.sourceConnectorProperties = this.sourceConnectorProperties;
+            copy.transmissionModeProperties = this.transmissionModeProperties;
             return copy;
         } catch (CloneNotSupportedException e) {
             throw new AssertionError(e);
@@ -95,12 +106,14 @@ public class SerialReceiverProperties extends ConnectorProperties implements Sou
         if (!(o instanceof SerialReceiverProperties)) return false;
         SerialReceiverProperties that = (SerialReceiverProperties) o;
         return Objects.equals(getPortConfig(), that.getPortConfig())
-                && Objects.equals(getSourceConnectorProperties(), that.getSourceConnectorProperties());
+                && Objects.equals(getSourceConnectorProperties(), that.getSourceConnectorProperties())
+                && Objects.equals(getTransmissionModeProperties(), that.getTransmissionModeProperties());
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(getPortConfig(), getSourceConnectorProperties());
+        return Objects.hash(getPortConfig(), getSourceConnectorProperties(),
+                getTransmissionModeProperties());
     }
 
     @Override

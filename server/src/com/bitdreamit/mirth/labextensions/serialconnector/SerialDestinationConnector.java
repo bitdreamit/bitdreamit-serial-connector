@@ -10,6 +10,7 @@ import com.mirth.connect.donkey.model.message.Status;
 import com.mirth.connect.donkey.server.channel.DestinationConnector;
 import com.mirth.connect.donkey.server.event.ConnectionStatusEvent;
 import com.mirth.connect.donkey.server.event.ErrorEvent;
+import com.mirth.connect.model.transmission.TransmissionModeProperties;
 import com.mirth.connect.server.controllers.ControllerFactory;
 import com.mirth.connect.server.controllers.EventController;
 import org.apache.log4j.Logger;
@@ -240,26 +241,93 @@ public class SerialDestinationConnector extends DestinationConnector {
     }
 
     private byte[] buildFrame(String payload, SerialPortConfig config) throws Exception {
-        String mode = config.getTransmissionMode();
+        // DYNAMIC: Look up transmission mode provider from Mirth's ExtensionController
+        TransmissionModeProperties modeProps = connectorProperties.getTransmissionModeProperties();
+        String mode = (modeProps != null) ? modeProps.getPluginPointName() : config.getTransmissionMode();
         if (mode == null) mode = "RAW";
 
-        // PREMIUM: Use dynamic transmission mode provider (like TCP connector)
-        SerialTransmissionModeProvider provider =
-                SerialTransmissionModeRegistry.getServerProvider(mode);
+        try {
+            // Look up provider from Mirth's extension system — EXACT same API as TCP
+            com.mirth.connect.server.controllers.ExtensionController extController =
+                com.mirth.connect.server.controllers.ControllerFactory.getFactory().createExtensionController();
+            java.util.Map<String, com.mirth.connect.plugins.TransmissionModeProvider> providers =
+                extController.getTransmissionModeProviders();
 
-        if (provider == null) {
-            // Fallback to RAW bytes if provider not found
-            logger.warn("Transmission mode provider not found for '" + mode +
-                        "', falling back to RAW. Available modes: " +
-                        java.util.Arrays.toString(SerialTransmissionModeRegistry.getAvailableModes()));
-            Charset cs = Charset.forName(config.getCharset());
-            return config.isBinaryMode()
-                    ? java.util.Base64.getDecoder().decode(payload)
-                    : payload.getBytes(cs);
+            com.mirth.connect.plugins.TransmissionModeProvider provider = providers.get(mode);
+
+            if (provider != null) {
+                // Use the provider's StreamHandler to frame the message
+                logger.debug("Using Mirth transmission mode provider for framing: " + mode);
+
+                // Create a ByteArrayOutputStream to capture the framed output
+                java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+                com.mirth.connect.donkey.server.message.StreamHandler streamHandler =
+                    provider.getStreamHandler(null, baos, null, modeProps);
+
+                // Write the message — the StreamHandler handles framing
+                streamHandler.write(payload.getBytes());
+
+                return baos.toByteArray();
+            }
+        } catch (Throwable t) {
+            logger.warn("Could not use Mirth transmission mode provider for framing '" + mode +
+                        "': " + t.getMessage() + " — falling back to built-in framing");
         }
 
-        // Use the provider to frame the outgoing message
-        return provider.frameMessage(payload, provider.getDefaultProperties(), config);
+        // FALLBACK: Built-in framing (same as before)
+        Charset charset = Charset.forName(config.getCharset());
+        byte[] payloadBytes = config.isBinaryMode()
+                ? java.util.Base64.getDecoder().decode(payload)
+                : payload.getBytes(charset);
+
+        switch (mode.toUpperCase()) {
+            case "RAW": return payloadBytes;
+            case "LINE": {
+                String delimiter = unescapeDelimiter(config.getLineDelimiter());
+                byte[] delimBytes = delimiter.getBytes(charset);
+                byte[] result = new byte[payloadBytes.length + delimBytes.length];
+                System.arraycopy(payloadBytes, 0, result, 0, payloadBytes.length);
+                System.arraycopy(delimBytes, 0, result, payloadBytes.length, delimBytes.length);
+                return result;
+            }
+            case "FRAME": {
+                byte[] start = parseHexString(config.getStartOfMessageBytes());
+                byte[] end = parseHexString(config.getEndOfMessageBytes());
+                byte[] result = new byte[start.length + payloadBytes.length + end.length];
+                System.arraycopy(start, 0, result, 0, start.length);
+                System.arraycopy(payloadBytes, 0, result, start.length, payloadBytes.length);
+                System.arraycopy(end, 0, result, start.length + payloadBytes.length, end.length);
+                return result;
+            }
+            case "MLLP": {
+                byte[] start = parseHexString(config.getStartOfMessageBytes());
+                byte[] end = parseHexString(config.getEndOfMessageBytes());
+                if (start.length == 0) start = new byte[]{0x0B};
+                if (end.length == 0) end = new byte[]{0x1C, 0x0D};
+                byte[] result = new byte[start.length + payloadBytes.length + end.length];
+                System.arraycopy(start, 0, result, 0, start.length);
+                System.arraycopy(payloadBytes, 0, result, start.length, payloadBytes.length);
+                System.arraycopy(end, 0, result, start.length + payloadBytes.length, end.length);
+                return result;
+            }
+            case "ASTM": {
+                byte[] start = parseHexString(config.getStartOfMessageBytes());
+                byte[] end = parseHexString(config.getEndOfMessageBytes());
+                if (start.length == 0) start = new byte[]{0x02};
+                if (end.length == 0) end = new byte[]{0x03};
+                byte[] chkBytes = calculateChecksum(payloadBytes, config.getChecksumAlgorithm(), charset);
+                byte[] crlf = new byte[]{0x0D, 0x0A};
+                byte[] result = new byte[start.length + payloadBytes.length + end.length + chkBytes.length + crlf.length];
+                int pos = 0;
+                System.arraycopy(start, 0, result, pos, start.length); pos += start.length;
+                System.arraycopy(payloadBytes, 0, result, pos, payloadBytes.length); pos += payloadBytes.length;
+                System.arraycopy(end, 0, result, pos, end.length); pos += end.length;
+                System.arraycopy(chkBytes, 0, result, pos, chkBytes.length); pos += chkBytes.length;
+                System.arraycopy(crlf, 0, result, pos, crlf.length);
+                return result;
+            }
+            default: return payloadBytes;
+        }
     }
 
     private String unescapeDelimiter(String delim) {

@@ -9,6 +9,7 @@ import com.mirth.connect.donkey.server.channel.DispatchResult;
 import com.mirth.connect.donkey.server.channel.SourceConnector;
 import com.mirth.connect.donkey.server.event.ConnectionStatusEvent;
 import com.mirth.connect.donkey.server.event.ErrorEvent;
+import com.mirth.connect.model.transmission.TransmissionModeProperties;
 import com.mirth.connect.server.controllers.ControllerFactory;
 import com.mirth.connect.server.controllers.EventController;
 import org.apache.log4j.Logger;
@@ -203,46 +204,68 @@ public class SerialSourceConnector extends SourceConnector {
     }
 
     private void processBytes(byte[] data, SerialPortConfig config) throws Exception {
-        String mode = config.getTransmissionMode();
-        if (mode == null) mode = "RAW";
+        // DYNAMIC: Look up transmission mode provider from Mirth's ExtensionController
+        // This is the SAME API that TCP connector uses.
+        // When a new mode extension is installed (e.g. ASTM E1381), it automatically
+        // appears here without any code changes.
 
-        // PREMIUM: Use dynamic transmission mode provider (like TCP connector)
-        SerialTransmissionModeProvider provider =
-                SerialTransmissionModeRegistry.getServerProvider(mode);
+        TransmissionModeProperties modeProps = connectorProperties.getTransmissionModeProperties();
+        String modeName = (modeProps != null) ? modeProps.getPluginPointName() : config.getTransmissionMode();
 
-        if (provider == null) {
-            // Fallback to RAW if provider not found (e.g. custom mode plugin not installed)
-            logger.warn("Transmission mode provider not found for '" + mode +
-                        "', falling back to RAW. Available modes: " +
-                        java.util.Arrays.toString(SerialTransmissionModeRegistry.getAvailableModes()));
-            dispatchRaw(data, config);
-            return;
+        if (modeName == null || modeName.isEmpty()) {
+            modeName = "RAW";
         }
 
-        // Use the provider to process incoming bytes into complete messages
-        String[] messages = provider.processBytes(data, provider.getDefaultProperties(), config);
+        try {
+            // Look up provider from Mirth's extension system — EXACT same API as TCP
+            com.mirth.connect.server.controllers.ExtensionController extController =
+                com.mirth.connect.server.controllers.ControllerFactory.getFactory().createExtensionController();
+            java.util.Map<String, com.mirth.connect.plugins.TransmissionModeProvider> providers =
+                extController.getTransmissionModeProviders();
 
-        if (messages != null) {
-            for (String msg : messages) {
-                try {
-                    dispatchRawMessage(new RawMessage(msg));
-                    statistics.recordMessageReceived();
+            com.mirth.connect.plugins.TransmissionModeProvider provider = providers.get(modeName);
 
-                    // If provider sends ACK (e.g. MLLP, ASTM), send it back
-                    if (provider.sendsAck() && serialPort != null && serialPort.isOpen()) {
-                        byte[] ack = provider.buildAck(msg, provider.getDefaultProperties(), config);
-                        if (ack.length > 0) {
-                            serialPort.writeBytes(ack, ack.length);
-                            if (protocolLogger != null) {
-                                protocolLogger.logOut(ack, "ACK");
-                            }
-                        }
+            if (provider != null) {
+                // Use the provider's StreamHandler with serial port streams
+                logger.debug("Using Mirth transmission mode provider: " + modeName);
+
+                // Get serial port streams for the StreamHandler
+                java.io.InputStream inputStream = serialPort.getInputStream();
+                java.io.OutputStream outputStream = serialPort.getOutputStream();
+
+                // Create StreamHandler — this handles framing/parsing automatically
+                com.mirth.connect.donkey.server.message.StreamHandler streamHandler =
+                    provider.getStreamHandler(inputStream, outputStream, null, modeProps);
+
+                // Read a message using the stream handler
+                String message = Arrays.toString(streamHandler.read());
+                if (message != null && !message.isEmpty()) {
+                    try {
+                        dispatchRawMessage(new RawMessage(message));
+                        statistics.recordMessageReceived();
+                    } catch (ChannelException e) {
+                        logger.error("Failed to dispatch message via " + modeName + " provider", e);
+                        statistics.recordError();
                     }
-                } catch (ChannelException e) {
-                    logger.error("Failed to dispatch message via " + mode + " provider", e);
-                    statistics.recordError();
                 }
+                return;
             }
+        } catch (Throwable t) {
+            logger.warn("Could not use Mirth transmission mode provider for '" + modeName +
+                        "': " + t.getMessage() + " — falling back to built-in mode handling");
+        }
+
+        // FALLBACK: Built-in mode handling (for when no Mirth extension provider is available)
+        // This handles RAW, LINE, FRAME, MLLP, ASTM natively
+        switch (modeName.toUpperCase()) {
+            case "RAW":           dispatchRaw(data, config); break;
+            case "LINE":          processLineMode(data, config); break;
+            case "FRAME":         processFrameMode(data, config); break;
+            case "MLLP":          processMllpMode(data, config); break;
+            case "ASTM":          processAstmMode(data, config); break;
+            case "BASIC":         processLineMode(data, config); break;
+            case "ASTM_E1381":    processAstmMode(data, config); break;
+            default:              dispatchRaw(data, config);
         }
     }
 

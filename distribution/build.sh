@@ -73,20 +73,50 @@ build() {
         -sourcepath "$PROJECT_DIR/client/src${STUBS_SOURCEPATH:+:$STUBS_SOURCEPATH}" \
         $(find "$PROJECT_DIR/client/src" -name "*.java")
 
-    echo "[build] packaging shared jar..."
-    jar cf "$OUT_DIR/bitdreamit-serial-connector-shared.jar" -C "$OUT_DIR/shared" .
+    echo "[build] packaging shared jar (with manifest)..."
+    # Create MANIFEST.MF — Mirth Launcher requires it in EVERY jar
+    mkdir -p "$OUT_DIR/shared/META-INF"
+    cat > "$OUT_DIR/shared/META-INF/MANIFEST.MF" << 'EOF'
+Manifest-Version: 1.0
+Created-By: Bitdreamit Serial Connector Build 1.3.0
+Implementation-Title: bitdreamit-serial-connector-shared
+Implementation-Version: 1.3.0
+Implementation-Vendor: Bit Dream IT
+EOF
+    jar cfm "$OUT_DIR/bitdreamit-serial-connector-shared.jar" \
+        "$OUT_DIR/shared/META-INF/MANIFEST.MF" -C "$OUT_DIR/shared" .
 
-    echo "[build] packaging server jar (shared + server merged)..."
+    echo "[build] packaging server jar (shared + server merged, with manifest)..."
     rm -rf "$OUT_DIR/server-jar"; mkdir -p "$OUT_DIR/server-jar"
     cp -r "$OUT_DIR/shared/." "$OUT_DIR/server-jar/"
     cp -r "$OUT_DIR/server/." "$OUT_DIR/server-jar/"
-    jar cf "$OUT_DIR/bitdreamit-serial-connector-server.jar" -C "$OUT_DIR/server-jar" .
+    # Create manifest for server jar
+    mkdir -p "$OUT_DIR/server-jar/META-INF"
+    cat > "$OUT_DIR/server-jar/META-INF/MANIFEST.MF" << 'EOF'
+Manifest-Version: 1.0
+Created-By: Bitdreamit Serial Connector Build 1.3.0
+Implementation-Title: bitdreamit-serial-connector-server
+Implementation-Version: 1.3.0
+Implementation-Vendor: Bit Dream IT
+EOF
+    jar cfm "$OUT_DIR/bitdreamit-serial-connector-server.jar" \
+        "$OUT_DIR/server-jar/META-INF/MANIFEST.MF" -C "$OUT_DIR/server-jar" .
 
-    echo "[build] packaging client jar (shared + client merged)..."
+    echo "[build] packaging client jar (shared + client merged, with manifest)..."
     rm -rf "$OUT_DIR/client-jar"; mkdir -p "$OUT_DIR/client-jar"
     cp -r "$OUT_DIR/shared/." "$OUT_DIR/client-jar/"
     cp -r "$OUT_DIR/client/." "$OUT_DIR/client-jar/"
-    jar cf "$OUT_DIR/bitdreamit-serial-connector-client.jar" -C "$OUT_DIR/client-jar" .
+    # Create manifest for client jar
+    mkdir -p "$OUT_DIR/client-jar/META-INF"
+    cat > "$OUT_DIR/client-jar/META-INF/MANIFEST.MF" << 'EOF'
+Manifest-Version: 1.0
+Created-By: Bitdreamit Serial Connector Build 1.3.0
+Implementation-Title: bitdreamit-serial-connector-client
+Implementation-Version: 1.3.0
+Implementation-Vendor: Bit Dream IT
+EOF
+    jar cfm "$OUT_DIR/bitdreamit-serial-connector-client.jar" \
+        "$OUT_DIR/client-jar/META-INF/MANIFEST.MF" -C "$OUT_DIR/client-jar" .
 
     echo "[build] copying XML + lib..."
     cp "$PROJECT_DIR/plugin.xml"       "$OUT_DIR/plugin.xml"

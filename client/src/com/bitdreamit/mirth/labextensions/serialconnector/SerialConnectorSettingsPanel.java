@@ -322,18 +322,24 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         modePanel.setBackground(Color.WHITE);
         modePanel.setOpaque(true);
         transmissionModeBox = new MirthComboBox();
-        // PREMIUM: Populate modes dynamically from SerialTransmissionModeRegistry
-        // This allows new modes (MLLP, ASTM, custom) to be added as separate plugins
-        // without modifying this file.
-        java.util.Map<String, SerialTransmissionModeClientProvider> clientProviders =
-                SerialTransmissionModeRegistry.getClientProviders();
-        if (clientProviders.isEmpty()) {
-            // Fallback to built-in modes if registry not populated yet
-            transmissionModeBox.setModel(new DefaultComboBoxModel<>(
+        // DYNAMIC: Populate modes from Mirth's LoadedExtensions — SAME API as TCP connector.
+        // When a new mode extension is installed (e.g. ASTM E1381), it automatically
+        // appears in this dropdown without any code changes.
+        try {
+            java.util.Map<String, ?> plugins =
+                com.mirth.connect.client.ui.LoadedExtensions.getInstance().getTransmissionModePlugins();
+            if (plugins != null && !plugins.isEmpty()) {
+                transmissionModeBox.setModel(new DefaultComboBoxModel<>(
+                    plugins.keySet().toArray(new String[0])));
+            } else {
+                // Fallback if no transmission mode plugins loaded
+                transmissionModeBox.setModel(new DefaultComboBoxModel<>(
                     new String[]{"RAW", "LINE", "FRAME", "MLLP", "ASTM"}));
-        } else {
+            }
+        } catch (Throwable t) {
+            // Fallback if LoadedExtensions API not available
             transmissionModeBox.setModel(new DefaultComboBoxModel<>(
-                    clientProviders.keySet().toArray(new String[0])));
+                new String[]{"RAW", "LINE", "FRAME", "MLLP", "ASTM"}));
         }
         transmissionModeBox.setPreferredSize(new Dimension(100, 22));
         transmissionModeBox.addActionListener(this);

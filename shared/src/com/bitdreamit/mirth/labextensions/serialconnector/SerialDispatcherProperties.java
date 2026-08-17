@@ -4,6 +4,7 @@ import com.mirth.connect.donkey.model.channel.ConnectorProperties;
 import com.mirth.connect.donkey.model.channel.DestinationConnectorProperties;
 import com.mirth.connect.donkey.model.channel.DestinationConnectorPropertiesInterface;
 import com.mirth.connect.donkey.util.DonkeyElement;
+import com.mirth.connect.model.transmission.TransmissionModeProperties;
 import com.thoughtworks.xstream.annotations.XStreamAlias;
 
 import java.util.Arrays;
@@ -12,10 +13,10 @@ import java.util.Objects;
 /**
  * Serial Destination Properties.
  *
- * CRITICAL: This class MUST exist ONLY in serial-shared.jar.
- * Do NOT duplicate it in serial-server or serial-client.
+ * Uses Mirth's TransmissionModeProperties framework — same as TCP.
+ * Modes are loaded DYNAMICALLY from Mirth's extension system.
  *
- * Implements DestinationConnectorPropertiesInterface — REQUIRED by Mirth for destination connectors.
+ * CRITICAL: This class MUST exist ONLY in serial-shared.jar.
  */
 @XStreamAlias("serialDispatcherProperties")
 public class SerialDispatcherProperties extends ConnectorProperties implements DestinationConnectorPropertiesInterface {
@@ -23,6 +24,9 @@ public class SerialDispatcherProperties extends ConnectorProperties implements D
 
     private SerialPortConfig portConfig = new SerialPortConfig();
     private DestinationConnectorProperties destinationConnectorProperties = new DestinationConnectorProperties();
+
+    // DYNAMIC: Stores the transmission mode properties (MLLP, ASTM, Frame, etc.)
+    private TransmissionModeProperties transmissionModeProperties;
 
     private boolean waitForAckAfterWrite = false;
     private int ackTimeout = 1000;
@@ -69,6 +73,12 @@ public class SerialDispatcherProperties extends ConnectorProperties implements D
     public boolean isKeepConnectionOpen() { return keepConnectionOpen; }
     public void setKeepConnectionOpen(boolean keepConnectionOpen) { this.keepConnectionOpen = keepConnectionOpen; }
 
+    // DYNAMIC: Transmission mode properties
+    public TransmissionModeProperties getTransmissionModeProperties() { return transmissionModeProperties; }
+    public void setTransmissionModeProperties(TransmissionModeProperties transmissionModeProperties) {
+        this.transmissionModeProperties = transmissionModeProperties;
+    }
+
     @Override
     public String getProtocol() { return "serial"; }
 
@@ -80,8 +90,10 @@ public class SerialDispatcherProperties extends ConnectorProperties implements D
         SerialPortConfig c = getPortConfig();
         StringBuilder sb = new StringBuilder();
         sb.append("Port: ").append(c.getPortName())
-                .append(", Baud: ").append(c.getBaudRate())
-                .append(", Mode: ").append(c.getTransmissionMode());
+                .append(", Baud: ").append(c.getBaudRate());
+        if (transmissionModeProperties != null) {
+            sb.append(", Mode: ").append(transmissionModeProperties.getPluginPointName());
+        }
         if (waitForAckAfterWrite) sb.append(", ACK: ").append(ackTimeout).append("ms");
         if (keepConnectionOpen)   sb.append(", Pooled");
         return sb.toString();
@@ -98,11 +110,8 @@ public class SerialDispatcherProperties extends ConnectorProperties implements D
             if (this.ackPattern != null) {
                 copy.ackPattern = this.ackPattern.clone();
             }
-            // Shallow copy of destinationConnectorProperties — its clone() is protected
-            // in some Mirth SDK versions and cannot be called directly.
-            // This is safe: Mirth re-populates destinationConnectorProperties from the
-            // channel XML on deployment, so the shared reference is overwritten.
             copy.destinationConnectorProperties = this.destinationConnectorProperties;
+            copy.transmissionModeProperties = this.transmissionModeProperties;
             return copy;
         } catch (CloneNotSupportedException e) {
             throw new AssertionError(e);
@@ -119,12 +128,14 @@ public class SerialDispatcherProperties extends ConnectorProperties implements D
                 && keepConnectionOpen == that.keepConnectionOpen
                 && Objects.equals(getPortConfig(), that.getPortConfig())
                 && Objects.equals(getDestinationConnectorProperties(), that.getDestinationConnectorProperties())
+                && Objects.equals(getTransmissionModeProperties(), that.getTransmissionModeProperties())
                 && Arrays.equals(ackPattern, that.ackPattern);
     }
 
     @Override
     public int hashCode() {
         int result = Objects.hash(getPortConfig(), getDestinationConnectorProperties(),
+                getTransmissionModeProperties(),
                 waitForAckAfterWrite, ackTimeout, keepConnectionOpen);
         return 31 * result + Arrays.hashCode(ackPattern);
     }
