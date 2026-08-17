@@ -1,3 +1,27 @@
-/serial-server/out
-/serial-shared/out
-/serial-client/out
+# Build output
+/out/
+
+# IntelliJ IDEA (keep .idea for project sharing, but ignore workspace)
+.idea/workspace.xml
+.idea/shelf/
+.idea/httpRequests/
+.idea/dataSources/
+.idea/dataSources.local.xml
+
+# Eclipse / VS Code
+.classpath
+.project
+.settings/
+bin/
+
+# Maven
+target/
+*.class
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
