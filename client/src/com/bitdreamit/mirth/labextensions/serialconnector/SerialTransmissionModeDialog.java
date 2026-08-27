@@ -1,5 +1,8 @@
 package com.bitdreamit.mirth.labextensions.serialconnector;
 
+import com.mirth.connect.client.ui.components.MirthCheckBox;
+import com.mirth.connect.client.ui.components.MirthComboBox;
+import com.mirth.connect.client.ui.components.MirthTextField;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
@@ -17,14 +20,14 @@ public class SerialTransmissionModeDialog extends JDialog implements ActionListe
     private boolean saved = false;
     private String mode;
 
-    private JTextField startBytesField;
-    private JTextField endBytesField;
-    private JTextField lineDelimiterField;
-    private JCheckBox useMLLPv2Box;
-    private JTextField commitAckField;
-    private JTextField commitNakField;
-    private JTextField maxRetryField;
-    private JComboBox<String> byteAbbrevBox;
+    private MirthTextField startBytesField;
+    private MirthTextField endBytesField;
+    private MirthTextField lineDelimiterField;
+    private MirthCheckBox useMLLPv2Box;
+    private MirthTextField commitAckField;
+    private MirthTextField commitNakField;
+    private MirthTextField maxRetryField;
+    private MirthComboBox<String> byteAbbrevBox;
 
     private JPanel framingSection;
     private JPanel lineModeSection;
@@ -175,11 +178,15 @@ public class SerialTransmissionModeDialog extends JDialog implements ActionListe
         layout.setConstraints(sep1, sep1g);
         centerPanel.add(sep1);
 
-        startBytesField = new JTextField(14);
+        startBytesField = new MirthTextField();
+
+        startBytesField.setPreferredSize(new Dimension(112, 22));
         startBytesField.setPreferredSize(new Dimension(140, 22));
         addRow(centerPanel, layout, "Start of Message (hex):", startBytesField, row++);
 
-        endBytesField = new JTextField(14);
+        endBytesField = new MirthTextField();
+
+        endBytesField.setPreferredSize(new Dimension(112, 22));
         endBytesField.setPreferredSize(new Dimension(140, 22));
         addRow(centerPanel, layout, "End of Message (hex):", endBytesField, row++);
 
@@ -198,7 +205,9 @@ public class SerialTransmissionModeDialog extends JDialog implements ActionListe
         layout.setConstraints(sep2, sep2g);
         centerPanel.add(sep2);
 
-        lineDelimiterField = new JTextField(14);
+        lineDelimiterField = new MirthTextField();
+
+        lineDelimiterField.setPreferredSize(new Dimension(112, 22));
         lineDelimiterField.setPreferredSize(new Dimension(140, 22));
         addRow(centerPanel, layout, "Delimiter:", lineDelimiterField, row++);
 
@@ -217,7 +226,7 @@ public class SerialTransmissionModeDialog extends JDialog implements ActionListe
         layout.setConstraints(sep3, sep3g);
         centerPanel.add(sep3);
 
-        useMLLPv2Box = new JCheckBox("Use MLLPv2 (send commit ACK)");
+        useMLLPv2Box = new MirthCheckBox("Use MLLPv2 (send commit ACK)");
         useMLLPv2Box.setBackground(Color.WHITE);
         addRow(centerPanel, layout, "MLLP Version:", useMLLPv2Box, row++);
 
@@ -236,11 +245,15 @@ public class SerialTransmissionModeDialog extends JDialog implements ActionListe
         layout.setConstraints(sep4, sep4g);
         centerPanel.add(sep4);
 
-        commitAckField = new JTextField(10);
+        commitAckField = new MirthTextField();
+
+        commitAckField.setPreferredSize(new Dimension(80, 22));
         commitAckField.setPreferredSize(new Dimension(100, 22));
         addRow(centerPanel, layout, "Commit ACK (hex):", commitAckField, row++);
 
-        commitNakField = new JTextField(10);
+        commitNakField = new MirthTextField();
+
+        commitNakField.setPreferredSize(new Dimension(80, 22));
         commitNakField.setPreferredSize(new Dimension(100, 22));
         addRow(centerPanel, layout, "Commit NAK (hex):", commitNakField, row++);
 
@@ -259,7 +272,9 @@ public class SerialTransmissionModeDialog extends JDialog implements ActionListe
         layout.setConstraints(sep5, sep5g);
         centerPanel.add(sep5);
 
-        maxRetryField = new JTextField(8);
+        maxRetryField = new MirthTextField();
+
+        maxRetryField.setPreferredSize(new Dimension(64, 22));
         maxRetryField.setPreferredSize(new Dimension(60, 22));
         addRow(centerPanel, layout, "Max Retry Count:", maxRetryField, row++);
 
@@ -274,12 +289,13 @@ public class SerialTransmissionModeDialog extends JDialog implements ActionListe
         JLabel abbrevLabel = new JLabel("Insert Byte:");
         abbrevLabel.setForeground(LABEL_COLOR);
         abbrevPanel.add(abbrevLabel);
-        byteAbbrevBox = new JComboBox<>(new String[]{
+        byteAbbrevBox = new MirthComboBox<>();
+        byteAbbrevBox.setModel(new DefaultComboBoxModel<>(new String[]{
                 "-- Select --", "<NUL>", "<SOH>", "<STX>", "<ETX>", "<EOT>", "<ENQ>", "<ACK>",
                 "<BEL>", "<BS>", "<TAB>", "<LF>", "<VT>", "<FF>", "<CR>", "<SO>", "<SI>",
                 "<DLE>", "<DC1>", "<DC2>", "<DC3>", "<DC4>", "<NAK>", "<SYN>", "<ETB>",
                 "<CAN>", "<EM>", "<SUB>", "<ESC>", "<FS>", "<GS>", "<RS>", "<US>", "<SP>", "<DEL>"
-        });
+        }));
         byteAbbrevBox.setPreferredSize(new Dimension(120, 22));
         byteAbbrevBox.addActionListener(this);
         abbrevPanel.add(byteAbbrevBox);
@@ -382,8 +398,8 @@ public class SerialTransmissionModeDialog extends JDialog implements ActionListe
             if (hex == null) return;
 
             Component focusOwner = getFocusOwner();
-            if (focusOwner instanceof JTextField) {
-                JTextField tf = (JTextField) focusOwner;
+            if (focusOwner instanceof MirthTextField) {
+                MirthTextField tf = (MirthTextField) focusOwner;
                 int pos = tf.getCaretPosition();
                 try {
                     tf.getDocument().insertString(pos, hex, null);

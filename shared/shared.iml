@@ -9,6 +9,5 @@
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="library" name="mirth-server" level="project" />
     <orderEntry type="library" name="mirth-client" level="project" />
-    <orderEntry type="library" name="jSerialComm" level="project" />
   </component>
 </module>

@@ -2,7 +2,9 @@ package com.bitdreamit.mirth.labextensions.serialconnector;
 
 import com.mirth.connect.client.ui.components.MirthCheckBox;
 import com.mirth.connect.client.ui.components.MirthComboBox;
+import com.mirth.connect.client.ui.components.MirthTextField;
 import com.mirth.connect.donkey.model.channel.ConnectorProperties;
+import org.apache.log4j.Logger;
 
 import javax.swing.*;
 import java.awt.*;
@@ -22,6 +24,7 @@ import java.awt.event.ActionListener;
  * CRITICAL: This class MUST exist ONLY in serial-client.jar.
  */
 public class SerialConnectorSettingsPanel extends JPanel implements ActionListener {
+    private static final Logger logger = Logger.getLogger(SerialConnectorSettingsPanel.class);
 
     private boolean isSender;
     private ConnectorProperties properties;
@@ -50,9 +53,9 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
     private JButton transmissionSettingsBtn;
 
     // Timeouts fields
-    private JTextField readTimeoutField;
-    private JTextField writeTimeoutField;
-    private JTextField bufferSizeField;
+    private MirthTextField readTimeoutField;
+    private MirthTextField writeTimeoutField;
+    private MirthTextField bufferSizeField;
 
     // Signal control fields
     private MirthCheckBox dtrBox;
@@ -60,32 +63,32 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
     private MirthCheckBox waitCtsBox;
     private MirthCheckBox waitDsrBox;
     private MirthCheckBox waitDcdBox;
-    private JTextField signalTimeoutField;
+    private MirthTextField signalTimeoutField;
 
     // Advanced fields
     private MirthCheckBox breakBox;
-    private JTextField breakDurField;
+    private MirthTextField breakDurField;
     private MirthCheckBox flushOpenBox;
     private MirthCheckBox flushCloseBox;
 
     // Health monitor fields
     private MirthCheckBox healthBox;
-    private JTextField healthIntervalField;
-    private JTextField maxReconnectField;
-    private JTextField reconnectDelayField;
+    private MirthTextField healthIntervalField;
+    private MirthTextField maxReconnectField;
+    private MirthTextField reconnectDelayField;
 
     // Premium fields
-    private JTextField idleTimeoutField;
-    private JTextField receiveIdleTimeoutField;
-    private JTextField portAliasField;
+    private MirthTextField idleTimeoutField;
+    private MirthTextField receiveIdleTimeoutField;
+    private MirthTextField portAliasField;
     private JButton testConnectionBtn;
 
     // PREMIUM: Destination extras
     private MirthCheckBox processResponseBox;
-    private JTextField responseDelimiterField;
-    private JTextField responseTimeoutField;
+    private MirthTextField responseDelimiterField;
+    private MirthTextField responseTimeoutField;
     private MirthCheckBox useTemplateBox;
-    private JTextField templateField;
+    private MirthTextField templateField;
     private MirthComboBox checksumAlgoBox;
 
     // PREMIUM: Port status indicator
@@ -94,9 +97,9 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
 
     // Destination-only fields
     private MirthCheckBox waitAckBox;
-    private JTextField ackTimeoutField;
+    private MirthTextField ackTimeoutField;
     private MirthCheckBox keepOpenBox;
-    private JTextField ackPatternField;
+    private MirthTextField ackPatternField;
 
     private static final Color LABEL_COLOR = new Color(51, 51, 51);
     private static final Color SEP_COLOR = new Color(200, 200, 200);
@@ -263,7 +266,8 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         addRowCustom(contentPanel, layout, "Port:", portPanel, row++);
 
         // Port Alias (Premium)
-        portAliasField = new JTextField(20);
+        portAliasField = new MirthTextField();
+        portAliasField.setPreferredSize(new Dimension(160, 22));
         portAliasField.setPreferredSize(new Dimension(140, 22));
         addRow(contentPanel, layout, "Port Alias:", portAliasField, row++);
 
@@ -317,31 +321,30 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         binaryBox = new MirthCheckBox("Binary (Base64)");
         addRowCustom(contentPanel, layout, "Binary Mode:", binaryBox, row++);
 
-        // Transmission Mode — populated DYNAMICALLY from registry (like TCP connector)
+        // Transmission Mode — populated DYNAMICALLY from Mirth's LoadedExtensions.
+        // EXACTLY like TCP connector: iterates getTransmissionModePlugins(), calls
+        // createProvider() on each, and builds the dropdown from plugin names.
+        // NO hardcoded list — modes come from installed Mirth extensions only.
         JPanel modePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         modePanel.setBackground(Color.WHITE);
         modePanel.setOpaque(true);
         transmissionModeBox = new MirthComboBox();
-        // DYNAMIC: Populate modes from Mirth's LoadedExtensions — SAME API as TCP connector.
-        // When a new mode extension is installed (e.g. ASTM E1381), it automatically
-        // appears in this dropdown without any code changes.
         try {
-            java.util.Map<String, ?> plugins =
-                com.mirth.connect.client.ui.LoadedExtensions.getInstance().getTransmissionModePlugins();
-            if (plugins != null && !plugins.isEmpty()) {
-                transmissionModeBox.setModel(new DefaultComboBoxModel<>(
-                    plugins.keySet().toArray(new String[0])));
-            } else {
-                // Fallback if no transmission mode plugins loaded
-                transmissionModeBox.setModel(new DefaultComboBoxModel<>(
-                    new String[]{"RAW", "LINE", "FRAME", "MLLP", "ASTM"}));
+            com.mirth.connect.client.ui.LoadedExtensions le =
+                com.mirth.connect.client.ui.LoadedExtensions.getInstance();
+            java.util.Map<String, com.mirth.connect.plugins.TransmissionModePlugin> modePlugins =
+                le.getTransmissionModePlugins();
+            if (modePlugins != null && !modePlugins.isEmpty()) {
+                java.util.Vector<String> modeNames = new java.util.Vector<>();
+                for (String name : modePlugins.keySet()) {
+                    modeNames.add(name);
+                }
+                transmissionModeBox.setModel(new DefaultComboBoxModel<>(modeNames));
             }
         } catch (Throwable t) {
-            // Fallback if LoadedExtensions API not available
-            transmissionModeBox.setModel(new DefaultComboBoxModel<>(
-                new String[]{"RAW", "LINE", "FRAME", "MLLP", "ASTM"}));
+            logger.warn("Could not load transmission mode plugins: " + t.getMessage());
         }
-        transmissionModeBox.setPreferredSize(new Dimension(100, 22));
+        transmissionModeBox.setPreferredSize(new Dimension(120, 22));
         transmissionModeBox.addActionListener(this);
         modePanel.add(transmissionModeBox);
         transmissionSettingsBtn = new JButton("Configure...");
@@ -353,15 +356,27 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         // ===== Section: Timeouts =====
         addSectionHeader(contentPanel, layout, "Timeouts", row++);
 
-        readTimeoutField = new JTextField("1000", 8);
+        readTimeoutField = new MirthTextField();
+
+        readTimeoutField.setText("1000");
+
+        readTimeoutField.setPreferredSize(new Dimension(64, 22));
         readTimeoutField.setPreferredSize(new Dimension(80, 22));
         addRow(contentPanel, layout, "Read Timeout (ms):", readTimeoutField, row++);
 
-        writeTimeoutField = new JTextField("1000", 8);
+        writeTimeoutField = new MirthTextField();
+
+        writeTimeoutField.setText("1000");
+
+        writeTimeoutField.setPreferredSize(new Dimension(64, 22));
         writeTimeoutField.setPreferredSize(new Dimension(80, 22));
         addRow(contentPanel, layout, "Write Timeout (ms):", writeTimeoutField, row++);
 
-        bufferSizeField = new JTextField("4096", 8);
+        bufferSizeField = new MirthTextField();
+
+        bufferSizeField.setText("4096");
+
+        bufferSizeField.setPreferredSize(new Dimension(64, 22));
         bufferSizeField.setPreferredSize(new Dimension(80, 22));
         addRow(contentPanel, layout, "Buffer Size:", bufferSizeField, row++);
 
@@ -392,7 +407,11 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         waitPanel.add(waitDcdBox);
         addRowCustom(contentPanel, layout, "Wait For:", waitPanel, row++);
 
-        signalTimeoutField = new JTextField("1000", 8);
+        signalTimeoutField = new MirthTextField();
+
+        signalTimeoutField.setText("1000");
+
+        signalTimeoutField.setPreferredSize(new Dimension(64, 22));
         signalTimeoutField.setPreferredSize(new Dimension(80, 22));
         addRow(contentPanel, layout, "Signal Timeout (ms):", signalTimeoutField, row++);
 
@@ -402,7 +421,11 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         breakBox = new MirthCheckBox("Send break before opening port");
         addRowCustom(contentPanel, layout, "Send Break:", breakBox, row++);
 
-        breakDurField = new JTextField("100", 8);
+        breakDurField = new MirthTextField();
+
+        breakDurField.setText("100");
+
+        breakDurField.setPreferredSize(new Dimension(64, 22));
         breakDurField.setPreferredSize(new Dimension(80, 22));
         addRow(contentPanel, layout, "Break Duration (ms):", breakDurField, row++);
 
@@ -417,11 +440,19 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         // ===== Section: Timeouts (Premium) =====
         addSectionHeader(contentPanel, layout, "Idle & Receive Timeouts", row++);
 
-        idleTimeoutField = new JTextField("0", 8);
+        idleTimeoutField = new MirthTextField();
+
+        idleTimeoutField.setText("0");
+
+        idleTimeoutField.setPreferredSize(new Dimension(64, 22));
         idleTimeoutField.setPreferredSize(new Dimension(80, 22));
         addRow(contentPanel, layout, "Idle Timeout (ms):", idleTimeoutField, row++);
 
-        receiveIdleTimeoutField = new JTextField("0", 8);
+        receiveIdleTimeoutField = new MirthTextField();
+
+        receiveIdleTimeoutField.setText("0");
+
+        receiveIdleTimeoutField.setPreferredSize(new Dimension(64, 22));
         receiveIdleTimeoutField.setPreferredSize(new Dimension(80, 22));
         addRow(contentPanel, layout, "Receive Idle (ms):", receiveIdleTimeoutField, row++);
 
@@ -432,15 +463,27 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
         healthBox.setSelected(true);
         addRowCustom(contentPanel, layout, "Auto-Reconnect:", healthBox, row++);
 
-        healthIntervalField = new JTextField("5000", 8);
+        healthIntervalField = new MirthTextField();
+
+        healthIntervalField.setText("5000");
+
+        healthIntervalField.setPreferredSize(new Dimension(64, 22));
         healthIntervalField.setPreferredSize(new Dimension(80, 22));
         addRow(contentPanel, layout, "Check Interval (ms):", healthIntervalField, row++);
 
-        maxReconnectField = new JTextField("10", 8);
+        maxReconnectField = new MirthTextField();
+
+        maxReconnectField.setText("10");
+
+        maxReconnectField.setPreferredSize(new Dimension(64, 22));
         maxReconnectField.setPreferredSize(new Dimension(60, 22));
         addRow(contentPanel, layout, "Max Retry:", maxReconnectField, row++);
 
-        reconnectDelayField = new JTextField("5000", 8);
+        reconnectDelayField = new MirthTextField();
+
+        reconnectDelayField.setText("5000");
+
+        reconnectDelayField.setPreferredSize(new Dimension(64, 22));
         reconnectDelayField.setPreferredSize(new Dimension(80, 22));
         addRow(contentPanel, layout, "Retry Delay (ms):", reconnectDelayField, row++);
 
@@ -454,11 +497,19 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
             waitAckBox = new MirthCheckBox("Wait for ACK after write");
             addRowCustom(contentPanel, layout, "ACK:", waitAckBox, row++);
 
-            ackTimeoutField = new JTextField("1000", 8);
+            ackTimeoutField = new MirthTextField();
+
+            ackTimeoutField.setText("1000");
+
+            ackTimeoutField.setPreferredSize(new Dimension(64, 22));
             ackTimeoutField.setPreferredSize(new Dimension(80, 22));
             addRow(contentPanel, layout, "ACK Timeout (ms):", ackTimeoutField, row++);
 
-            ackPatternField = new JTextField("06", 8);
+            ackPatternField = new MirthTextField();
+
+            ackPatternField.setText("06");
+
+            ackPatternField.setPreferredSize(new Dimension(64, 22));
             ackPatternField.setPreferredSize(new Dimension(60, 22));
             addRow(contentPanel, layout, "ACK Pattern (hex):", ackPatternField, row++);
 
@@ -466,11 +517,19 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
             processResponseBox = new MirthCheckBox("Read response after write");
             addRowCustom(contentPanel, layout, "Process Response:", processResponseBox, row++);
 
-            responseDelimiterField = new JTextField("\\r\\n", 10);
+            responseDelimiterField = new MirthTextField();
+
+            responseDelimiterField.setText("\\r\\n");
+
+            responseDelimiterField.setPreferredSize(new Dimension(80, 22));
             responseDelimiterField.setPreferredSize(new Dimension(80, 22));
             addRow(contentPanel, layout, "Response Delimiter:", responseDelimiterField, row++);
 
-            responseTimeoutField = new JTextField("5000", 8);
+            responseTimeoutField = new MirthTextField();
+
+            responseTimeoutField.setText("5000");
+
+            responseTimeoutField.setPreferredSize(new Dimension(64, 22));
             responseTimeoutField.setPreferredSize(new Dimension(80, 22));
             addRow(contentPanel, layout, "Response Timeout (ms):", responseTimeoutField, row++);
 
@@ -478,7 +537,9 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
             useTemplateBox = new MirthCheckBox("Apply message template");
             addRowCustom(contentPanel, layout, "Use Template:", useTemplateBox, row++);
 
-            templateField = new JTextField(30);
+            templateField = new MirthTextField();
+
+            templateField.setPreferredSize(new Dimension(240, 22));
             templateField.setPreferredSize(new Dimension(200, 22));
             addRow(contentPanel, layout, "Template:", templateField, row++);
 

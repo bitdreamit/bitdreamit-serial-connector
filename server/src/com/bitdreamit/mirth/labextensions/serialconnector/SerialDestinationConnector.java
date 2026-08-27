@@ -50,7 +50,7 @@ public class SerialDestinationConnector extends DestinationConnector {
                 logger.info("Serial destination pooled on " + connectorProperties.getPortConfig().getPortName());
             } catch (Exception e) {
                 logger.error("SerialDestinationConnector.onStart FAILED for channel " + getChannelId() +
-                             ": " + e.getMessage(), e);
+                        ": " + e.getMessage(), e);
                 throw new RuntimeException("Failed to open serial destination: " + e.getMessage(), e);
             }
         }
@@ -83,8 +83,8 @@ public class SerialDestinationConnector extends DestinationConnector {
         }
         if (!(raw instanceof SerialDispatcherProperties)) {
             throw new IllegalStateException(
-                "SerialDestinationConnector.onDeploy: expected SerialDispatcherProperties but got " +
-                raw.getClass().getName() + ". Clear <mirth>/extensions/.cache/ and restart Mirth.");
+                    "SerialDestinationConnector.onDeploy: expected SerialDispatcherProperties but got " +
+                            raw.getClass().getName() + ". Clear <mirth>/extensions/.cache/ and restart Mirth.");
         }
         this.connectorProperties = (SerialDispatcherProperties) raw;
 
@@ -96,7 +96,7 @@ public class SerialDestinationConnector extends DestinationConnector {
         }
         statistics.reset();
         logger.info("SerialDestinationConnector.onDeploy: properties loaded for channel " + getChannelId() +
-                    ", port=" + config.getPortName());
+                ", port=" + config.getPortName());
     }
 
     @Override
@@ -141,8 +141,8 @@ public class SerialDestinationConnector extends DestinationConnector {
             statistics.recordMessageSent();
 
             logger.info("Wrote " + written + " bytes to " + config.getPortName() +
-                        " (total: " + statistics.getBytesWritten() + " bytes, " +
-                        statistics.getMessagesSent() + " msgs)");
+                    " (total: " + statistics.getBytesWritten() + " bytes, " +
+                    statistics.getMessagesSent() + " msgs)");
 
             // ACK handling
             if (props.isWaitForAckAfterWrite()) {
@@ -204,8 +204,8 @@ public class SerialDestinationConnector extends DestinationConnector {
      */
     private String applyTemplate(String template, String message) {
         return template.replace("${message}", message)
-                       .replace("${msg}", message)
-                       .replace("${payload}", message);
+                .replace("${msg}", message)
+                .replace("${payload}", message);
     }
 
     /**
@@ -249,9 +249,9 @@ public class SerialDestinationConnector extends DestinationConnector {
         try {
             // Look up provider from Mirth's extension system — EXACT same API as TCP
             com.mirth.connect.server.controllers.ExtensionController extController =
-                com.mirth.connect.server.controllers.ControllerFactory.getFactory().createExtensionController();
+                    com.mirth.connect.server.controllers.ControllerFactory.getFactory().createExtensionController();
             java.util.Map<String, com.mirth.connect.plugins.TransmissionModeProvider> providers =
-                extController.getTransmissionModeProviders();
+                    extController.getTransmissionModeProviders();
 
             com.mirth.connect.plugins.TransmissionModeProvider provider = providers.get(mode);
 
@@ -262,16 +262,19 @@ public class SerialDestinationConnector extends DestinationConnector {
                 // Create a ByteArrayOutputStream to capture the framed output
                 java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
                 com.mirth.connect.donkey.server.message.StreamHandler streamHandler =
-                    provider.getStreamHandler(null, baos, null, modeProps);
+                        provider.getStreamHandler(null, baos, null, modeProps);
 
                 // Write the message — the StreamHandler handles framing
-                streamHandler.write(payload.getBytes());
+                // StreamHandler.write() expects byte[], not String
+                Charset cs = Charset.forName(config.getCharset());
+                byte[] payloadBytes = payload.getBytes(cs);
+                streamHandler.write(payloadBytes);
 
                 return baos.toByteArray();
             }
         } catch (Throwable t) {
             logger.warn("Could not use Mirth transmission mode provider for framing '" + mode +
-                        "': " + t.getMessage() + " — falling back to built-in framing");
+                    "': " + t.getMessage() + " — falling back to built-in framing");
         }
 
         // FALLBACK: Built-in framing (same as before)
@@ -369,13 +372,6 @@ public class SerialDestinationConnector extends DestinationConnector {
     }
 
     private byte[] parseHexString(String hex) {
-        if (hex == null || hex.trim().isEmpty()) return new byte[0];
-        String clean = hex.replaceAll("\\s", "").toUpperCase();
-        if (clean.length() % 2 != 0) clean = "0" + clean;
-        byte[] result = new byte[clean.length() / 2];
-        for (int i = 0; i < clean.length(); i += 2) {
-            result[i / 2] = (byte) Integer.parseInt(clean.substring(i, i + 2), 16);
-        }
-        return result;
+        return SerialBuiltinModeProviders.parseHex(hex);
     }
 }

@@ -65,7 +65,7 @@ public class SerialPortConfig implements Serializable, Cloneable {
     private boolean protocolLoggingEnabled = false;
     private int maxLogEntries = 1000;
 
-    // Transmission Mode: RAW | LINE | FRAME | MLLP | ASTM
+    // Transmission Mode: loaded dynamically from Mirth extensions (like TCP connector)
     private String transmissionMode = "RAW";
     private String lineDelimiter = "\\r\\n";
 

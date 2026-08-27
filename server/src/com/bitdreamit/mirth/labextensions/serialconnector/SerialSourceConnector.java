@@ -40,6 +40,7 @@ public class SerialSourceConnector extends SourceConnector {
     private AtomicReference<Thread> readerThread = new AtomicReference<>();
     private AtomicReference<Thread> healthThread = new AtomicReference<>();
     private ByteArrayOutputStream frameBuffer = new ByteArrayOutputStream();
+    private ByteArrayOutputStream autoBuffer = new ByteArrayOutputStream();
 
     // PREMIUM: Statistics and protocol logger
     private SerialStatistics statistics = new SerialStatistics();
@@ -237,9 +238,10 @@ public class SerialSourceConnector extends SourceConnector {
                 com.mirth.connect.donkey.server.message.StreamHandler streamHandler =
                     provider.getStreamHandler(inputStream, outputStream, null, modeProps);
 
-                // Read a message using the stream handler
-                String message = Arrays.toString(streamHandler.read());
-                if (message != null && !message.isEmpty()) {
+                // Read a message using the stream handler — returns byte[]
+                byte[] messageBytes = streamHandler.read();
+                if (messageBytes != null && messageBytes.length > 0) {
+                    String message = new String(messageBytes, Charset.forName(config.getCharset()));
                     try {
                         dispatchRawMessage(new RawMessage(message));
                         statistics.recordMessageReceived();
@@ -256,7 +258,6 @@ public class SerialSourceConnector extends SourceConnector {
         }
 
         // FALLBACK: Built-in mode handling (for when no Mirth extension provider is available)
-        // This handles RAW, LINE, FRAME, MLLP, ASTM natively
         switch (modeName.toUpperCase()) {
             case "RAW":           dispatchRaw(data, config); break;
             case "LINE":          processLineMode(data, config); break;
@@ -266,6 +267,164 @@ public class SerialSourceConnector extends SourceConnector {
             case "BASIC":         processLineMode(data, config); break;
             case "ASTM_E1381":    processAstmMode(data, config); break;
             default:              dispatchRaw(data, config);
+        }
+    }
+
+    // ===== AUTO-DETECT MODE =====
+    // Smart detection: examines byte patterns and routes to the correct handler.
+    // Supports MLLP, ASTM, Frame, LINE, and RAW — all detected dynamically.
+
+    private static final byte VT  = 0x0B; // MLLP start
+    private static final byte FS  = 0x1C; // MLLP end part 1
+    private static final byte CR  = 0x0D;
+    private static final byte LF  = 0x0A;
+    private static final byte STX = 0x02; // ASTM/Frame start
+    private static final byte ETX = 0x03; // ASTM/Frame end
+    private static final byte ENQ = 0x05; // ASTM inquiry
+    private static final byte ACK = 0x06;
+    private static final byte NAK = 0x15;
+    private static final byte EOT = 0x04;
+
+    /** Tracks detected mode so we don't re-analyze every chunk. */
+    private String autoDetectedMode = null;
+
+    private void processAutoDetect(byte[] data, SerialPortConfig config) throws Exception {
+        if (data == null || data.length == 0) return;
+
+        // Buffer the data
+        autoBuffer.write(data, 0, data.length);
+        byte[] buf = autoBuffer.toByteArray();
+
+        // If we already detected the mode, keep using it
+        if (autoDetectedMode != null) {
+            processAutoWithKnownMode(buf, config);
+            return;
+        }
+
+        // --- Detect mode by examining first significant byte ---
+        // Find the first non-null byte
+        int firstByteIdx = 0;
+        while (firstByteIdx < buf.length && buf[firstByteIdx] == 0) {
+            firstByteIdx++;
+        }
+        if (firstByteIdx >= buf.length) return; // all nulls, wait for more
+
+        byte firstByte = buf[firstByteIdx];
+        Charset cs = Charset.forName(config.getCharset());
+
+        if (firstByte == VT) {
+            // 0x0B → MLLP mode
+            autoDetectedMode = "MLLP";
+            logger.info("AUTO-DETECT: detected MLLP mode (VT byte 0x0B)");
+            // Send remaining MLLP config defaults
+            processMllpMode(buf, config);
+
+        } else if (firstByte == STX) {
+            // 0x02 → could be ASTM or generic Frame
+            // Check if there's a checksum after ETX (2 hex chars + CRLF = ASTM)
+            autoDetectedMode = "ASTM";
+            logger.info("AUTO-DETECT: detected ASTM mode (STX byte 0x02)");
+            processAstmMode(buf, config);
+
+        } else if (firstByte == ENQ) {
+            // 0x05 → ASTM ENQ (instrument wants to talk)
+            autoDetectedMode = "ASTM";
+            logger.info("AUTO-DETECT: detected ASTM mode (ENQ byte 0x05)");
+            // Send ACK to allow the instrument to start sending
+            if (serialPort != null && serialPort.isOpen()) {
+                serialPort.writeBytes(new byte[]{ACK}, 1);
+                if (protocolLogger != null) protocolLogger.logOut(new byte[]{ACK}, "AUTO-ACK (ENQ response)");
+            }
+            // Remove the ENQ byte from buffer and continue
+            autoBuffer.reset();
+            if (buf.length > 1) {
+                autoBuffer.write(buf, 1, buf.length - 1);
+            }
+
+        } else if (firstByte == EOT) {
+            // 0x04 → End of Transmission (ASTM), just discard
+            autoBuffer.reset();
+            if (firstByteIdx + 1 < buf.length) {
+                autoBuffer.write(buf, firstByteIdx + 1, buf.length - firstByteIdx - 1);
+            }
+
+        } else {
+            // Check for LINE mode: look for \r\n in the data
+            boolean hasCRLF = false;
+            for (int i = 0; i < buf.length - 1; i++) {
+                if (buf[i] == CR && buf[i + 1] == LF) {
+                    hasCRLF = true;
+                    break;
+                }
+            }
+
+            if (hasCRLF) {
+                autoDetectedMode = "LINE";
+                logger.info("AUTO-DETECT: detected LINE mode (CRLF found)");
+                processLineMode(buf, config);
+            } else {
+                // No known framing detected — check if we have enough data
+                // If buffer is large or hasn't received data for a while, dispatch as RAW
+                if (buf.length >= config.getBufferSize()) {
+                    // Buffer full, no framing detected — dispatch as RAW
+                    autoDetectedMode = "RAW";
+                    logger.info("AUTO-DETECT: detected RAW mode (no framing, buffer full)");
+                    dispatchRaw(buf, config);
+                    autoBuffer.reset();
+                }
+                // Otherwise wait for more data
+            }
+        }
+    }
+
+    /** Process data using a previously detected mode. */
+    private void processAutoWithKnownMode(byte[] buf, SerialPortConfig config) throws Exception {
+        switch (autoDetectedMode) {
+            case "MLLP":
+                processMllpMode(buf, config);
+                break;
+            case "ASTM":
+                // Also handle ENQ/EOT in the stream
+                int i = 0;
+                ByteArrayOutputStream cleanBuf = new ByteArrayOutputStream();
+                while (i < buf.length) {
+                    byte b = buf[i];
+                    if (b == ENQ) {
+                        // Respond to ENQ with ACK
+                        if (serialPort != null && serialPort.isOpen()) {
+                            serialPort.writeBytes(new byte[]{ACK}, 1);
+                            if (protocolLogger != null) protocolLogger.logOut(new byte[]{ACK}, "AUTO-ACK (ENQ)");
+                        }
+                        i++;
+                    } else if (b == EOT) {
+                        // Skip EOT
+                        i++;
+                    } else if (b == ACK || b == NAK) {
+                        // Skip ACK/NAK from instrument
+                        i++;
+                    } else {
+                        cleanBuf.write(b);
+                        i++;
+                    }
+                }
+                byte[] cleanData = cleanBuf.toByteArray();
+                if (cleanData.length > 0) {
+                    // Process as ASTM (STX...ETX + checksum)
+                    processAstmMode(cleanData, config);
+                } else {
+                    autoBuffer.reset();
+                }
+                break;
+            case "LINE":
+                processLineMode(buf, config);
+                break;
+            case "FRAME":
+                processFrameMode(buf, config);
+                break;
+            default:
+                dispatchRaw(buf, config);
+                autoBuffer.reset();
+                break;
         }
     }
 
