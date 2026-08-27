@@ -358,7 +358,6 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
 
         readTimeoutField = new MirthTextField();
 
-        readTimeoutField.setText("1000");
 
         readTimeoutField.setPreferredSize(new Dimension(64, 22));
         readTimeoutField.setPreferredSize(new Dimension(80, 22));
@@ -366,7 +365,6 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
 
         writeTimeoutField = new MirthTextField();
 
-        writeTimeoutField.setText("1000");
 
         writeTimeoutField.setPreferredSize(new Dimension(64, 22));
         writeTimeoutField.setPreferredSize(new Dimension(80, 22));
@@ -374,7 +372,6 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
 
         bufferSizeField = new MirthTextField();
 
-        bufferSizeField.setText("4096");
 
         bufferSizeField.setPreferredSize(new Dimension(64, 22));
         bufferSizeField.setPreferredSize(new Dimension(80, 22));
@@ -409,7 +406,6 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
 
         signalTimeoutField = new MirthTextField();
 
-        signalTimeoutField.setText("1000");
 
         signalTimeoutField.setPreferredSize(new Dimension(64, 22));
         signalTimeoutField.setPreferredSize(new Dimension(80, 22));
@@ -423,7 +419,6 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
 
         breakDurField = new MirthTextField();
 
-        breakDurField.setText("100");
 
         breakDurField.setPreferredSize(new Dimension(64, 22));
         breakDurField.setPreferredSize(new Dimension(80, 22));
@@ -442,7 +437,6 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
 
         idleTimeoutField = new MirthTextField();
 
-        idleTimeoutField.setText("0");
 
         idleTimeoutField.setPreferredSize(new Dimension(64, 22));
         idleTimeoutField.setPreferredSize(new Dimension(80, 22));
@@ -450,7 +444,6 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
 
         receiveIdleTimeoutField = new MirthTextField();
 
-        receiveIdleTimeoutField.setText("0");
 
         receiveIdleTimeoutField.setPreferredSize(new Dimension(64, 22));
         receiveIdleTimeoutField.setPreferredSize(new Dimension(80, 22));
@@ -465,7 +458,6 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
 
         healthIntervalField = new MirthTextField();
 
-        healthIntervalField.setText("5000");
 
         healthIntervalField.setPreferredSize(new Dimension(64, 22));
         healthIntervalField.setPreferredSize(new Dimension(80, 22));
@@ -473,7 +465,6 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
 
         maxReconnectField = new MirthTextField();
 
-        maxReconnectField.setText("10");
 
         maxReconnectField.setPreferredSize(new Dimension(64, 22));
         maxReconnectField.setPreferredSize(new Dimension(60, 22));
@@ -481,7 +472,6 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
 
         reconnectDelayField = new MirthTextField();
 
-        reconnectDelayField.setText("5000");
 
         reconnectDelayField.setPreferredSize(new Dimension(64, 22));
         reconnectDelayField.setPreferredSize(new Dimension(80, 22));
@@ -499,7 +489,6 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
 
             ackTimeoutField = new MirthTextField();
 
-            ackTimeoutField.setText("1000");
 
             ackTimeoutField.setPreferredSize(new Dimension(64, 22));
             ackTimeoutField.setPreferredSize(new Dimension(80, 22));
@@ -507,7 +496,6 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
 
             ackPatternField = new MirthTextField();
 
-            ackPatternField.setText("06");
 
             ackPatternField.setPreferredSize(new Dimension(64, 22));
             ackPatternField.setPreferredSize(new Dimension(60, 22));
@@ -519,7 +507,6 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
 
             responseDelimiterField = new MirthTextField();
 
-            responseDelimiterField.setText("\\r\\n");
 
             responseDelimiterField.setPreferredSize(new Dimension(80, 22));
             responseDelimiterField.setPreferredSize(new Dimension(80, 22));
@@ -527,7 +514,6 @@ public class SerialConnectorSettingsPanel extends JPanel implements ActionListen
 
             responseTimeoutField = new MirthTextField();
 
-            responseTimeoutField.setText("5000");
 
             responseTimeoutField.setPreferredSize(new Dimension(64, 22));
             responseTimeoutField.setPreferredSize(new Dimension(80, 22));
