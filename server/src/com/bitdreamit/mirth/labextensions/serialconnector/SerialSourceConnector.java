@@ -15,6 +15,7 @@ import com.mirth.connect.server.controllers.EventController;
 import org.apache.log4j.Logger;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.nio.charset.Charset;
 import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -29,6 +30,27 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * XStream registration is handled by SerialServerPlugin.init(), NOT here.
  * This class focuses only on connector lifecycle.
+ *
+ * =========================================================================
+ * FIX (NO-DATA BUG):
+ * The old readLoop() consumed EVERY incoming byte with
+ * serialPort.readBytes() (SEMI_BLOCKING) and then, when a Mirth
+ * transmission-mode provider (e.g. ASTM E1381) was selected, created a
+ * StreamHandler over serialPort.getInputStream() — a SECOND reader on the
+ * same port. The handler never saw the already-consumed bytes, waited for
+ * ENQ until establishmentTimeout, threw, and the consumed chunk was
+ * silently discarded. Result: connection OK but ZERO data received.
+ *
+ * jSerialComm rule: use EITHER readBytes() OR getInputStream() — never both.
+ *
+ * New design (matches the working monolithic bitdreamit-astm driver):
+ *   - Provider mode (ASTM E1381 plugin): the StreamHandler is the ONLY
+ *     reader. It owns serialPort.getInputStream() exclusively; readBytes()
+ *     is NEVER called. ONE handler instance is created per connection so
+ *     protocol state (session, frame numbering, retries) persists.
+ *   - Built-in byte mode (RAW/LINE/FRAME/MLLP/ASTM fallback): readBytes()
+ *     owns the port and the consumed bytes are processed directly.
+ * =========================================================================
  */
 public class SerialSourceConnector extends SourceConnector {
     private static final Logger logger = Logger.getLogger(SerialSourceConnector.class);
@@ -46,19 +68,25 @@ public class SerialSourceConnector extends SourceConnector {
     private SerialStatistics statistics = new SerialStatistics();
     private ProtocolLogger protocolLogger = null;
 
+    // FIX: ONE StreamHandler per connection — protocol state (session established,
+    // expected frame number, retry counters) must persist across messages and across
+    // ENQ/EOT cycles. Never create a handler per read chunk.
+    private com.mirth.connect.donkey.server.message.StreamHandler modeHandler = null;
+    private SerialPort modeHandlerPort = null;
+
     @Override
     public void onDeploy() {
         Object raw = getConnectorProperties();
         if (raw == null) {
             throw new IllegalStateException("SerialSourceConnector.onDeploy: connectorProperties is null — " +
-                "Mirth did not provide properties. Check that source.xml sharedClassName matches " +
-                "the class in serial-shared.jar.");
+                    "Mirth did not provide properties. Check that source.xml sharedClassName matches " +
+                    "the class in serial-shared.jar.");
         }
         if (!(raw instanceof SerialReceiverProperties)) {
             throw new IllegalStateException(
-                "SerialSourceConnector.onDeploy: expected SerialReceiverProperties but got " +
-                raw.getClass().getName() + ". This means the wrong class is being loaded — " +
-                "clear <mirth>/extensions/.cache/ and restart Mirth.");
+                    "SerialSourceConnector.onDeploy: expected SerialReceiverProperties but got " +
+                            raw.getClass().getName() + ". This means the wrong class is being loaded — " +
+                            "clear <mirth>/extensions/.cache/ and restart Mirth.");
         }
         this.connectorProperties = (SerialReceiverProperties) raw;
 
@@ -72,7 +100,7 @@ public class SerialSourceConnector extends SourceConnector {
         // Reset statistics on deploy
         statistics.reset();
         logger.info("SerialSourceConnector.onDeploy: properties loaded for channel " + getChannelId() +
-                    ", port=" + config.getPortName());
+                ", port=" + config.getPortName());
     }
 
     @Override
@@ -86,14 +114,14 @@ public class SerialSourceConnector extends SourceConnector {
                 throw new IllegalStateException("connectorProperties is null in onStart() — onDeploy() failed.");
             }
             logger.info("SerialSourceConnector.onStart: starting channel " + getChannelId() +
-                        " on port " + connectorProperties.getPortConfig().getPortName());
+                    " on port " + connectorProperties.getPortConfig().getPortName());
             openPort();
             startReader();
             startHealthMonitor();
         } catch (Throwable t) {
             running.set(false);
             logger.error("SerialSourceConnector.onStart FAILED for channel " + getChannelId() +
-                         ": " + t.getClass().getName() + ": " + t.getMessage(), t);
+                    ": " + t.getClass().getName() + ": " + t.getMessage(), t);
             if (t instanceof RuntimeException) throw (RuntimeException) t;
             throw new RuntimeException("Failed to start serial source: " + t.getMessage(), t);
         }
@@ -114,6 +142,10 @@ public class SerialSourceConnector extends SourceConnector {
 
     private void openPort() throws Exception {
         serialPort = SerialPortManager.getOrOpenPort(connectorProperties.getPortConfig());
+        // FIX: invalidate any cached StreamHandler — it must be recreated against the
+        // freshly opened port so its InputStream is bound to the live connection.
+        modeHandler = null;
+        modeHandlerPort = null;
         eventController.dispatchEvent(new ConnectionStatusEvent(
                 getChannelId(), getMetaDataId(), getConnectorProperties().getName(), ConnectionStatusEventType.CONNECTED));
         logger.info("Serial source connected on " + connectorProperties.getPortConfig().getPortName());
@@ -123,6 +155,8 @@ public class SerialSourceConnector extends SourceConnector {
         if (serialPort != null) {
             SerialPortManager.releasePort(serialPort.getSystemPortName(), true);
             serialPort = null;
+            modeHandler = null;
+            modeHandlerPort = null;
             eventController.dispatchEvent(new ConnectionStatusEvent(
                     getChannelId(), getMetaDataId(), getConnectorProperties().getName(), ConnectionStatusEventType.DISCONNECTED));
         }
@@ -162,6 +196,52 @@ public class SerialSourceConnector extends SourceConnector {
 
     private void readLoop() {
         SerialPortConfig config = connectorProperties.getPortConfig();
+
+        // FIX: resolve mode + provider ONCE per connection (the old code did an
+        // ExtensionController lookup on EVERY read chunk and then mis-routed the bytes).
+        TransmissionModeProperties modeProps = connectorProperties.getTransmissionModeProperties();
+        String modeName = (modeProps != null) ? modeProps.getPluginPointName() : config.getTransmissionMode();
+        if (modeName == null || modeName.isEmpty()) {
+            modeName = "RAW";
+        }
+
+        com.mirth.connect.plugins.TransmissionModeProvider provider = null;
+        try {
+            com.mirth.connect.server.controllers.ExtensionController extController =
+                    com.mirth.connect.server.controllers.ControllerFactory.getFactory().createExtensionController();
+            java.util.Map<String, com.mirth.connect.plugins.TransmissionModeProvider> providers =
+                    extController.getTransmissionModeProviders();
+            provider = providers.get(modeName);
+        } catch (Throwable t) {
+            logger.warn("Could not look up Mirth transmission mode provider for '" + modeName +
+                    "': " + t.getMessage() + " — falling back to built-in mode handling");
+            provider = null;
+        }
+
+        if (provider != null) {
+            if (modeProps == null) {
+                // Channel stored only the mode name (no polymorphic properties).
+                // FIX (compile): Mirth's abstract TransmissionModeProvider does NOT
+                // declare getDefaultProperties() — the concrete plugin class defines
+                // it as an extra method, so resolve it reflectively at runtime.
+                modeProps = resolveDefaultProperties(provider);
+            }
+            if (modeProps != null) {
+                logger.info("Serial source using Mirth transmission mode provider: " + modeName);
+                if (providerReadLoop(provider, modeProps, config)) {
+                    // Provider mode ran until the channel stopped — done.
+                    return;
+                }
+                logger.warn("Transmission mode '" + modeName + "' could not be initialized — " +
+                        "falling back to built-in byte mode");
+            } else {
+                logger.warn("No transmission-mode properties available for '" + modeName +
+                        "' — falling back to built-in byte mode");
+            }
+        }
+
+        // ===== BUILT-IN BYTE MODE (RAW/LINE/FRAME/MLLP/ASTM fallback) =====
+        // readBytes() is the single owner of the port in this mode.
         byte[] buffer = new byte[config.getBufferSize()];
 
         while (running.get()) {
@@ -186,10 +266,10 @@ public class SerialSourceConnector extends SourceConnector {
 
                     if (logger.isDebugEnabled()) {
                         logger.debug("Serial read " + bytesRead + " bytes from " + config.getPortName() +
-                                     " (total: " + statistics.getBytesRead() + " bytes, " +
-                                     statistics.getMessagesReceived() + " msgs)");
+                                " (total: " + statistics.getBytesRead() + " bytes, " +
+                                statistics.getMessagesReceived() + " msgs)");
                     }
-                    processBytes(data, config);
+                    processBuiltIn(data, config);
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -204,12 +284,170 @@ public class SerialSourceConnector extends SourceConnector {
         }
     }
 
-    private void processBytes(byte[] data, SerialPortConfig config) throws Exception {
-        // DYNAMIC: Look up transmission mode provider from Mirth's ExtensionController
-        // This is the SAME API that TCP connector uses.
-        // When a new mode extension is installed (e.g. ASTM E1381), it automatically
-        // appears here without any code changes.
+    /**
+     * FIX: Provider-driven read loop (e.g. ASTM E1381 plugin).
+     *
+     * The StreamHandler is the ONLY reader of the port: it reads byte-by-byte from
+     * serialPort.getInputStream() (exactly like the working monolithic driver does via
+     * AbstractAstmConnection.doGetInputStream().read()). serialPort.readBytes() is
+     * NEVER called in this mode, so the handler finally receives ENQ, frames, EOT.
+     *
+     * ONE handler instance is kept per connection: session state, frame numbering and
+     * retry counters survive across messages, ENQ/EOT cycles and NAK retries.
+     *
+     * IOException from handler.read() (establishment/frame timeouts, protocol aborts)
+     * is treated as RECOVERABLE: the port stays open, the handler keeps its state,
+     * the loop retries after a short pause. Only a stopped channel exits the loop.
+     */
+    private boolean providerReadLoop(com.mirth.connect.plugins.TransmissionModeProvider provider,
+                                     TransmissionModeProperties modeProps,
+                                     SerialPortConfig config) {
+        Charset cs = Charset.forName(config.getCharset());
+        int handlerInitFailures = 0;
 
+        while (running.get()) {
+            try {
+                if (serialPort == null || !serialPort.isOpen()) {
+                    modeHandler = null;
+                    modeHandlerPort = null;
+                    Thread.sleep(100);
+                    continue;
+                }
+
+                // (Re)create the handler ONLY when the port instance changed —
+                // never per read chunk, otherwise the ASTM state machine resets.
+                if (modeHandler == null || modeHandlerPort != serialPort) {
+                    if (!createModeHandler(provider, modeProps, config)) {
+                        handlerInitFailures++;
+                        if (handlerInitFailures >= 3) {
+                            // Provider cannot build a handler (e.g. properties type
+                            // mismatch) — give up and let readLoop fall back to
+                            // built-in byte mode so data can still flow.
+                            return false;
+                        }
+                        Thread.sleep(1000);
+                        continue;
+                    }
+                    handlerInitFailures = 0;
+                }
+
+                byte[] messageBytes = modeHandler.read();
+
+                if (messageBytes != null && messageBytes.length > 0) {
+                    if (protocolLogger != null) {
+                        protocolLogger.logIn(messageBytes, "framed by " + modeProps.getPluginPointName());
+                    }
+
+                    String message = new String(messageBytes, cs);
+                    try {
+                        dispatchRawMessage(new RawMessage(message));
+                        statistics.recordMessageReceived();
+                    } catch (ChannelException e) {
+                        logger.error("Failed to dispatch message via " +
+                                modeProps.getPluginPointName() + " provider", e);
+                        statistics.recordError();
+                    }
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            } catch (IOException e) {
+                if (!running.get()) break;
+                // Recoverable: session establishment timeout (idle line), frame timeout,
+                // max transfer attempts, sender cancel (EOT). Handler state is kept.
+                logger.debug("Transmission mode '" + modeProps.getPluginPointName() +
+                        "' read cycle: " + e.getMessage());
+                statistics.recordError();
+                try { Thread.sleep(500); } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            } catch (Exception e) {
+                if (!running.get()) break;
+                logger.error("Serial read error on " + config.getPortName(), e);
+                statistics.recordError();
+                eventController.dispatchEvent(new ErrorEvent(
+                        getChannelId(), getMetaDataId(), null, ErrorEventType.SOURCE_CONNECTOR,
+                        getConnectorProperties().getName(), "Serial read error", e.getMessage(), e));
+                try { Thread.sleep(500); } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+
+        logger.info("Provider read loop exiting for channel " + getChannelId());
+        return true;
+    }
+
+    /**
+     * FIX (compile error "cannot find symbol: getDefaultProperties"):
+     * Mirth's abstract com.mirth.connect.plugins.TransmissionModeProvider only
+     * declares getPluginPointName() and getStreamHandler(...). The concrete
+     * plugin class (e.g. ASTME1381TransmissionModePlugin) adds
+     * getDefaultProperties() as an extra public method. serial-connector must
+     * stay compile-independent of the E1381 plugin, so the method is resolved
+     * reflectively at runtime.
+     *
+     * @return the provider's default properties, or null when the provider does
+     *         not expose them (caller falls back to built-in byte mode).
+     */
+    private TransmissionModeProperties resolveDefaultProperties(
+            com.mirth.connect.plugins.TransmissionModeProvider provider) {
+        try {
+            java.lang.reflect.Method m = provider.getClass().getMethod("getDefaultProperties");
+            Object result = m.invoke(provider);
+            if (result instanceof TransmissionModeProperties) {
+                logger.info("Using provider default properties: " + result.getClass().getName());
+                return (TransmissionModeProperties) result;
+            }
+        } catch (Throwable t) {
+            logger.debug("Provider " + provider.getClass().getName() +
+                    " does not expose getDefaultProperties(): " + t.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Creates the StreamHandler for the current port.
+     *
+     * @return true on success; false on ANY failure (port not open, null streams,
+     *         or the provider rejecting the properties) — caller counts failures
+     *         and falls back to built-in byte mode after 3 strikes.
+     */
+    private boolean createModeHandler(com.mirth.connect.plugins.TransmissionModeProvider provider,
+                                      TransmissionModeProperties modeProps,
+                                      SerialPortConfig config) {
+        try {
+            if (serialPort == null || !serialPort.isOpen()) {
+                return false;
+            }
+            java.io.InputStream in = serialPort.getInputStream();
+            java.io.OutputStream out = serialPort.getOutputStream();
+            if (in == null || out == null) {
+                logger.warn("Serial port " + config.getPortName() + " returned null stream(s)");
+                return false;
+            }
+            modeHandler = provider.getStreamHandler(in, out, null, modeProps);
+            modeHandlerPort = serialPort;
+            logger.info("StreamHandler created for transmission mode: " +
+                    modeProps.getPluginPointName());
+            return true;
+        } catch (Throwable t) {
+            logger.error("Failed to create StreamHandler for '" +
+                    modeProps.getPluginPointName() + "': " +
+                    t.getClass().getName() + ": " + t.getMessage(), t);
+            modeHandler = null;
+            modeHandlerPort = null;
+            return false;
+        }
+    }
+
+    // ===== BUILT-IN MODE PROCESSING (byte mode) =====
+    // The bytes passed in here were consumed by readBytes() in readLoop() —
+    // this path owns them. Provider modes never reach this method.
+
+    private void processBuiltIn(byte[] data, SerialPortConfig config) throws Exception {
         TransmissionModeProperties modeProps = connectorProperties.getTransmissionModeProperties();
         String modeName = (modeProps != null) ? modeProps.getPluginPointName() : config.getTransmissionMode();
 
@@ -217,47 +455,6 @@ public class SerialSourceConnector extends SourceConnector {
             modeName = "RAW";
         }
 
-        try {
-            // Look up provider from Mirth's extension system — EXACT same API as TCP
-            com.mirth.connect.server.controllers.ExtensionController extController =
-                com.mirth.connect.server.controllers.ControllerFactory.getFactory().createExtensionController();
-            java.util.Map<String, com.mirth.connect.plugins.TransmissionModeProvider> providers =
-                extController.getTransmissionModeProviders();
-
-            com.mirth.connect.plugins.TransmissionModeProvider provider = providers.get(modeName);
-
-            if (provider != null) {
-                // Use the provider's StreamHandler with serial port streams
-                logger.debug("Using Mirth transmission mode provider: " + modeName);
-
-                // Get serial port streams for the StreamHandler
-                java.io.InputStream inputStream = serialPort.getInputStream();
-                java.io.OutputStream outputStream = serialPort.getOutputStream();
-
-                // Create StreamHandler — this handles framing/parsing automatically
-                com.mirth.connect.donkey.server.message.StreamHandler streamHandler =
-                    provider.getStreamHandler(inputStream, outputStream, null, modeProps);
-
-                // Read a message using the stream handler — returns byte[]
-                byte[] messageBytes = streamHandler.read();
-                if (messageBytes != null && messageBytes.length > 0) {
-                    String message = new String(messageBytes, Charset.forName(config.getCharset()));
-                    try {
-                        dispatchRawMessage(new RawMessage(message));
-                        statistics.recordMessageReceived();
-                    } catch (ChannelException e) {
-                        logger.error("Failed to dispatch message via " + modeName + " provider", e);
-                        statistics.recordError();
-                    }
-                }
-                return;
-            }
-        } catch (Throwable t) {
-            logger.warn("Could not use Mirth transmission mode provider for '" + modeName +
-                        "': " + t.getMessage() + " — falling back to built-in mode handling");
-        }
-
-        // FALLBACK: Built-in mode handling (for when no Mirth extension provider is available)
         switch (modeName.toUpperCase()) {
             case "RAW":           dispatchRaw(data, config); break;
             case "LINE":          processLineMode(data, config); break;
@@ -618,7 +815,7 @@ public class SerialSourceConnector extends SourceConnector {
                 if (portDown || readerDead) {
                     if (reconnectAttempts < maxReconnect) {
                         logger.warn("Reconnecting... (" + (reconnectAttempts + 1) + "/" + maxReconnect +
-                                    ") portDown=" + portDown + " readerDead=" + readerDead);
+                                ") portDown=" + portDown + " readerDead=" + readerDead);
                         statistics.recordReconnect();
                         try {
                             closePort();
