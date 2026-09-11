@@ -211,7 +211,23 @@ public class SerialSourceConnector extends SourceConnector {
                     com.mirth.connect.server.controllers.ControllerFactory.getFactory().createExtensionController();
             java.util.Map<String, com.mirth.connect.plugins.TransmissionModeProvider> providers =
                     extController.getTransmissionModeProviders();
-            provider = providers.get(modeName);
+            if (providers != null) {
+                // FIX (serial+Dimension): exact match first, then CASE-INSENSITIVE
+                // scan - the channel may store "Dimension", "DIMENSION" or
+                // "dimension" while the plugin point name is "Dimension".
+                provider = providers.get(modeName);
+                if (provider == null) {
+                    for (java.util.Map.Entry<String, com.mirth.connect.plugins.TransmissionModeProvider> e
+                            : providers.entrySet()) {
+                        if (e.getKey() != null && e.getKey().equalsIgnoreCase(modeName)) {
+                            provider = e.getValue();
+                            logger.info("Transmission mode provider matched case-insensitively: '"
+                                    + modeName + "' -> '" + e.getKey() + "'");
+                            break;
+                        }
+                    }
+                }
+            }
         } catch (Throwable t) {
             logger.warn("Could not look up Mirth transmission mode provider for '" + modeName +
                     "': " + t.getMessage() + " — falling back to built-in mode handling");
@@ -463,8 +479,77 @@ public class SerialSourceConnector extends SourceConnector {
             case "ASTM":          processAstmMode(data, config); break;
             case "BASIC":         processLineMode(data, config); break;
             case "ASTM_E1381":    processAstmMode(data, config); break;
-            default:              dispatchRaw(data, config);
+            default:
+                // FIX (serial+Dimension): unknown modes ("Dimension", "DIMENSION",
+                // ...) used to fall straight through to dispatchRaw - raw chunks
+                // were dispatched WITHOUT any ACK, so the instrument retried 4x
+                // and raised error 318/321 ("serial not work"). Route them via
+                // the serial transmission-mode registry first (includes the
+                // built-in DIMENSION mode with full PN D00396 framing/ACK/auto
+                // answers), and only dispatch raw when nothing matches.
+                if (processViaSerialProvider(modeName, data, config)) {
+                    break;
+                }
+                logger.warn("Serial transmission mode '" + modeName
+                        + "' has no provider - dispatching raw bytes (no protocol ACK possible)");
+                dispatchRaw(data, config);
         }
+    }
+
+    /**
+     * Route a read chunk through a registered serial transmission-mode
+     * provider (case-insensitive lookup). The provider returns complete
+     * message payloads plus any protocol answers (ACK/NAK/auto N / auto M-A)
+     * which are written to the port immediately.
+     *
+     * @return true when a provider handled the chunk
+     */
+    private boolean processViaSerialProvider(String modeName, byte[] data, SerialPortConfig config) throws Exception {
+        SerialTransmissionModeProvider serialProvider =
+                SerialTransmissionModeRegistry.getServerProvider(modeName);
+        if (serialProvider == null) {
+            // Case-insensitive scan (registry keys are uppercase).
+            for (java.util.Map.Entry<String, SerialTransmissionModeProvider> e
+                    : SerialTransmissionModeRegistry.getServerProviders().entrySet()) {
+                if (e.getKey() != null && e.getKey().equalsIgnoreCase(modeName)) {
+                    serialProvider = e.getValue();
+                    break;
+                }
+            }
+        }
+        if (serialProvider == null) {
+            return false;
+        }
+
+        logger.info("Serial source using built-in serial provider: " + serialProvider.getPluginPointName());
+        String[] messages = serialProvider.processBytes(
+                data, serialProvider.getDefaultProperties(), config);
+
+        // Write protocol answers (ACK/NAK/auto frames) while the instrument
+        // timer is still running - the provider queued them in order.
+        byte[][] answers = serialProvider.drainAnswers();
+        if (answers.length > 0 && serialPort != null && serialPort.isOpen()) {
+            for (byte[] answer : answers) {
+                serialPort.writeBytes(answer, answer.length);
+                if (protocolLogger != null) {
+                    protocolLogger.logOut(answer, "answer via " + serialProvider.getPluginPointName());
+                }
+            }
+        }
+
+        if (messages != null) {
+            for (String message : messages) {
+                try {
+                    dispatchRawMessage(new RawMessage(message));
+                    statistics.recordMessageReceived();
+                } catch (ChannelException e) {
+                    logger.error("Failed to dispatch message from serial provider "
+                            + serialProvider.getPluginPointName(), e);
+                    statistics.recordError();
+                }
+            }
+        }
+        return true;
     }
 
     // ===== AUTO-DETECT MODE =====

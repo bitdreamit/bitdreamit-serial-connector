@@ -22,6 +22,7 @@ public class SerialBuiltinModeClientProviders {
         SerialTransmissionModeRegistry.registerClientProvider(new FrameClientProvider());
         SerialTransmissionModeRegistry.registerClientProvider(new MllpClientProvider());
         SerialTransmissionModeRegistry.registerClientProvider(new AstmClientProvider());
+        SerialTransmissionModeRegistry.registerClientProvider(new DimensionClientProvider());
     }
 
     // ===== RAW =====
@@ -229,5 +230,48 @@ public class SerialBuiltinModeClientProviders {
 
         @Override
         public String getSampleValue() { return "<STX><message><ETX><chk><CR><LF>"; }
+    }
+
+    // ===== DIMENSION (Siemens Dimension PN D00396) =====
+
+    public static class DimensionClientProvider extends SerialTransmissionModeClientProvider {
+        public static final String NAME = "DIMENSION";
+
+        @Override
+        public String getPluginPointName() { return NAME; }
+
+        @Override
+        public SerialTransmissionModeProperties getProperties() {
+            return new SerialTransmissionModeProperties(NAME);
+        }
+
+        @Override
+        public SerialTransmissionModeProperties getDefaultProperties() {
+            return new SerialTransmissionModeProperties(NAME);
+        }
+
+        @Override
+        public void setProperties(SerialTransmissionModeProperties properties) {}
+
+        @Override
+        public boolean checkProperties(SerialTransmissionModeProperties properties, boolean highlight) {
+            return true;
+        }
+
+        @Override
+        public void resetInvalidProperties() {}
+
+        @Override
+        public JComponent getSettingsComponent() {
+            JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+            panel.add(new JButton("No settings for DIMENSION mode"));
+            return panel;
+        }
+
+        @Override
+        public String getSampleLabel() { return "Siemens Dimension"; }
+
+        @Override
+        public String getSampleValue() { return "<STX>R<FS>...<FS><chk><ETX>"; }
     }
 }

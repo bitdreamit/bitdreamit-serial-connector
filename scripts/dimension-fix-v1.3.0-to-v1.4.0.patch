@@ -1,0 +1,1005 @@
+diff --git a/client/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialBuiltinModeClientProviders.java b/client/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialBuiltinModeClientProviders.java
+old mode 100644
+new mode 100755
+index 9589143..21c0e56
+--- a/client/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialBuiltinModeClientProviders.java
++++ b/client/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialBuiltinModeClientProviders.java
+@@ -22,6 +22,7 @@ public class SerialBuiltinModeClientProviders {
+         SerialTransmissionModeRegistry.registerClientProvider(new FrameClientProvider());
+         SerialTransmissionModeRegistry.registerClientProvider(new MllpClientProvider());
+         SerialTransmissionModeRegistry.registerClientProvider(new AstmClientProvider());
++        SerialTransmissionModeRegistry.registerClientProvider(new DimensionClientProvider());
+     }
+ 
+     // ===== RAW =====
+@@ -230,4 +231,47 @@ public class SerialBuiltinModeClientProviders {
+         @Override
+         public String getSampleValue() { return "<STX><message><ETX><chk><CR><LF>"; }
+     }
++
++    // ===== DIMENSION (Siemens Dimension PN D00396) =====
++
++    public static class DimensionClientProvider extends SerialTransmissionModeClientProvider {
++        public static final String NAME = "DIMENSION";
++
++        @Override
++        public String getPluginPointName() { return NAME; }
++
++        @Override
++        public SerialTransmissionModeProperties getProperties() {
++            return new SerialTransmissionModeProperties(NAME);
++        }
++
++        @Override
++        public SerialTransmissionModeProperties getDefaultProperties() {
++            return new SerialTransmissionModeProperties(NAME);
++        }
++
++        @Override
++        public void setProperties(SerialTransmissionModeProperties properties) {}
++
++        @Override
++        public boolean checkProperties(SerialTransmissionModeProperties properties, boolean highlight) {
++            return true;
++        }
++
++        @Override
++        public void resetInvalidProperties() {}
++
++        @Override
++        public JComponent getSettingsComponent() {
++            JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT));
++            panel.add(new JButton("No settings for DIMENSION mode"));
++            return panel;
++        }
++
++        @Override
++        public String getSampleLabel() { return "Siemens Dimension"; }
++
++        @Override
++        public String getSampleValue() { return "<STX>R<FS>...<FS><chk><ETX>"; }
++    }
+ }
+diff --git a/client/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialClientPlugin.java b/client/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialClientPlugin.java
+old mode 100644
+new mode 100755
+diff --git a/client/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialConnectorSettingsPanel.java b/client/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialConnectorSettingsPanel.java
+old mode 100644
+new mode 100755
+diff --git a/client/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialDestinationSettingsPanel.java b/client/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialDestinationSettingsPanel.java
+old mode 100644
+new mode 100755
+diff --git a/client/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialSourceSettingsPanel.java b/client/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialSourceSettingsPanel.java
+old mode 100644
+new mode 100755
+diff --git a/client/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialTransmissionModeDialog.java b/client/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialTransmissionModeDialog.java
+old mode 100644
+new mode 100755
+diff --git a/destination.xml b/destination.xml
+old mode 100644
+new mode 100755
+index a22cdb1..2349add
+--- a/destination.xml
++++ b/destination.xml
+@@ -2,7 +2,7 @@
+ <connectorMetaData path="bitdreamit-serial-connector">
+     <name>Serial Writer</name>
+     <author>Bit Dream IT</author>
+-    <pluginVersion>1.3.0</pluginVersion>
++    <pluginVersion>1.4.0</pluginVersion>
+     <mirthVersion>3.8.0,3.8.1,3.9.0,3.9.1,3.10.0,3.10.1,3.11.0,3.12.0,4.0.0,4.0.1,4.1.0,4.1.1,4.2.0,4.3.0,4.4.0,4.4.1,4.4.2,4.5.0,4.5.1,4.5.2,4.5.3,4.5.4,4.6.0,4.6.1,4.6.2,4.7.0,4.7.1,4.7.2</mirthVersion>
+     <url>https://www.bitdreamit.com</url>
+     <description>BitDreamIT Serial Destination — RS-232/RS-485 writer with signal waiting, ACK detection, and connection pooling.</description>
+diff --git a/distribution/build.sh b/distribution/build.sh
+old mode 100644
+new mode 100755
+index 37c1df1..b48520a
+--- a/distribution/build.sh
++++ b/distribution/build.sh
+@@ -78,9 +78,9 @@ build() {
+     mkdir -p "$OUT_DIR/shared/META-INF"
+     cat > "$OUT_DIR/shared/META-INF/MANIFEST.MF" << 'EOF'
+ Manifest-Version: 1.0
+-Created-By: Bitdreamit Serial Connector Build 1.3.0
++Created-By: Bitdreamit Serial Connector Build 1.4.0
+ Implementation-Title: bitdreamit-serial-connector-shared
+-Implementation-Version: 1.3.0
++Implementation-Version: 1.4.0
+ Implementation-Vendor: Bit Dream IT
+ EOF
+     jar cfm "$OUT_DIR/bitdreamit-serial-connector-shared.jar" \
+@@ -94,9 +94,9 @@ EOF
+     mkdir -p "$OUT_DIR/server-jar/META-INF"
+     cat > "$OUT_DIR/server-jar/META-INF/MANIFEST.MF" << 'EOF'
+ Manifest-Version: 1.0
+-Created-By: Bitdreamit Serial Connector Build 1.3.0
++Created-By: Bitdreamit Serial Connector Build 1.4.0
+ Implementation-Title: bitdreamit-serial-connector-server
+-Implementation-Version: 1.3.0
++Implementation-Version: 1.4.0
+ Implementation-Vendor: Bit Dream IT
+ EOF
+     jar cfm "$OUT_DIR/bitdreamit-serial-connector-server.jar" \
+@@ -110,9 +110,9 @@ EOF
+     mkdir -p "$OUT_DIR/client-jar/META-INF"
+     cat > "$OUT_DIR/client-jar/META-INF/MANIFEST.MF" << 'EOF'
+ Manifest-Version: 1.0
+-Created-By: Bitdreamit Serial Connector Build 1.3.0
++Created-By: Bitdreamit Serial Connector Build 1.4.0
+ Implementation-Title: bitdreamit-serial-connector-client
+-Implementation-Version: 1.3.0
++Implementation-Version: 1.4.0
+ Implementation-Vendor: Bit Dream IT
+ EOF
+     jar cfm "$OUT_DIR/bitdreamit-serial-connector-client.jar" \
+diff --git a/plugin.xml b/plugin.xml
+old mode 100644
+new mode 100755
+index cf6eb62..c6309e5
+--- a/plugin.xml
++++ b/plugin.xml
+@@ -2,7 +2,7 @@
+ <pluginMetaData path="bitdreamit-serial-connector">
+     <name>Serial Connector</name>
+     <author>Bit Dream IT</author>
+-    <pluginVersion>1.3.0</pluginVersion>
++    <pluginVersion>1.4.0</pluginVersion>
+     <mirthVersion>3.8.0,3.8.1,3.9.0,3.9.1,3.10.0,3.10.1,3.11.0,3.12.0,4.0.0,4.0.1,4.1.0,4.1.1,4.2.0,4.3.0,4.4.0,4.4.1,4.4.2,4.5.0,4.5.1,4.5.2,4.5.3,4.5.4,4.6.0,4.6.1,4.6.2,4.7.0,4.7.1,4.7.2</mirthVersion>
+     <url>https://www.bitdreamit.com</url>
+     <description>BitDreamIT Serial Connector — RS-232/RS-485 source and destination with auto-detect, protocol analyzer, health monitoring, signal control, ACK detection, and connection pooling.</description>
+diff --git a/server/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialBuiltinModeProviders.java b/server/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialBuiltinModeProviders.java
+old mode 100644
+new mode 100755
+index 24a1110..453f626
+--- a/server/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialBuiltinModeProviders.java
++++ b/server/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialBuiltinModeProviders.java
+@@ -17,6 +17,9 @@ import java.util.List;
+  */
+ public class SerialBuiltinModeProviders {
+ 
++    private static final org.apache.log4j.Logger logger =
++            org.apache.log4j.Logger.getLogger(SerialBuiltinModeProviders.class);
++
+     // ===== RAW mode =====
+ 
+     public static class RawProvider extends SerialTransmissionModeProvider {
+@@ -383,6 +386,231 @@ public class SerialBuiltinModeProviders {
+         }
+     }
+ 
++    // ===== DIMENSION mode (Siemens Dimension PN D00396) =====
++
++    /**
++     * Dimension provider — native Siemens Dimension host-link framing for
++     * serial lines (PN D00396 Rev.2). Mirrors the DLC rules of the
++     * bitdreamit-dimension-transmission extension:
++     *
++     *   Frame  = STX + TYPE + fields(FS-delimited) + CHK(2 hex) + ETX
++     *   CHK    = 8-bit sum mod 256 of all bytes between STX and CHK,
++     *            two UPPERCASE ASCII hex digits (chk sits BEFORE ETX)
++     *   ACK    0x06 after every correct frame (1-second instrument timer)
++     *   NAK    0x15 on bad checksum; sender retransmits max 4 times
++     *   ENQ    from the receiver on line error - answered with ACK
++     *
++     * Tolerant application answers (same policy as the extension's
++     * auto-response path, so a lone serial deployment stays protocol-clean):
++     *   P (poll)  or I (query)  ->  No Request frame  <STX>N<FS>6A<ETX>
++     *   R (result) or C (calib) ->  Acceptance frame  <STX>M<FS>A<FS><FS>E2<ETX>
++     *   M / D / W               ->  data-link ACK only
++     *
++     * When the bitdreamit-dimension-transmission extension is installed, the
++     * SerialSourceConnector prefers the full Mirth "Dimension" provider
++     * (order download via DimensionOrderRegistry); this built-in mode is the
++     * self-contained fallback that keeps instruments from erroring 318/321.
++     */
++    public static class DimensionProvider extends SerialTransmissionModeProvider {
++        public static final String NAME = "DIMENSION";
++        private ByteArrayOutputStream buffer = new ByteArrayOutputStream();
++        private int consecutiveNaks = 0;
++        private java.util.List<byte[]> lastAnswers = new java.util.ArrayList<byte[]>();
++
++        // Frame control bytes (PN D00396 p.1-5)
++        private static final byte DIM_STX = 0x02;
++        private static final byte DIM_ETX = 0x03;
++        private static final byte DIM_FS  = 0x1C;
++        private static final byte DIM_ENQ = 0x05;
++        private static final byte DIM_ACK = 0x06;
++        private static final byte DIM_NAK = 0x15;
++
++        @Override
++        public String getPluginPointName() { return NAME; }
++
++        @Override
++        public SerialTransmissionModeProperties getDefaultProperties() {
++            return new SerialTransmissionModeProperties(NAME);
++        }
++
++        @Override
++        public byte[] frameMessage(String payload, SerialTransmissionModeProperties props,
++                                   SerialPortConfig config) throws Exception {
++            Charset cs = Charset.forName(config.getCharset());
++            // Payload is the inner content (TYPE + fields). Dimension field
++            // layout ends with a trailing FS before CHK - add one if absent.
++            String body = (payload != null) ? payload : "";
++            if (!body.isEmpty() && body.charAt(body.length() - 1) != (char) (DIM_FS & 0xFF)) {
++                body = body + (char) (DIM_FS & 0xFF);
++            }
++            byte[] bodyBytes = body.getBytes(cs);
++            int sum = 0;
++            for (byte b : bodyBytes) sum = (sum + (b & 0xFF)) & 0xFF;
++            byte[] chk = String.format("%02X", sum).getBytes(cs);
++            byte[] out = new byte[1 + bodyBytes.length + chk.length + 1];
++            int pos = 0;
++            out[pos++] = DIM_STX;
++            System.arraycopy(bodyBytes, 0, out, pos, bodyBytes.length); pos += bodyBytes.length;
++            System.arraycopy(chk, 0, out, pos, chk.length); pos += chk.length;
++            out[pos] = DIM_ETX;
++            return out;
++        }
++
++        @Override
++        public String[] processBytes(byte[] data, SerialTransmissionModeProperties props,
++                                     SerialPortConfig config) throws Exception {
++            buffer.write(data, 0, data.length);
++            byte[] buf = buffer.toByteArray();
++            Charset cs = Charset.forName(config.getCharset());
++            java.util.List<String> messages = new java.util.ArrayList<String>();
++            java.util.List<byte[]> answers = new java.util.ArrayList<byte[]>();
++            int pos = 0;
++
++            while (pos < buf.length) {
++                byte b = buf[pos];
++
++                if (b == DIM_STX) {
++                    // Find the frame end.
++                    int etxIdx = indexOfByte(buf, DIM_ETX, pos + 1);
++                    if (etxIdx < 0) break; // incomplete - wait for more bytes
++
++                    int segmentLen = etxIdx - pos; // STX .. before ETX
++                    if (segmentLen < 4) {
++                        // Shorter than STX + TYPE + CHK(2) - NAK and drop.
++                        answers.add(new byte[]{DIM_NAK});
++                        noteNak(config);
++                        pos = etxIdx + 1;
++                        continue;
++                    }
++                    byte[] body = Arrays.copyOfRange(buf, pos + 1, etxIdx - 2); // TYPE..fields (no CHK)
++                    byte chk1 = buf[etxIdx - 2];
++                    byte chk2 = buf[etxIdx - 1];
++
++                    int sum = 0;
++                    for (byte x : body) sum = (sum + (x & 0xFF)) & 0xFF;
++                    String expected = String.format("%02X", sum);
++                    String actual = "" + (char) (chk1 & 0xFF) + (char) (chk2 & 0xFF);
++
++                    if (expected.equalsIgnoreCase(actual)) {
++                        consecutiveNaks = 0;
++                        answers.add(new byte[]{DIM_ACK});
++                        String payload = new String(body, cs);
++                        messages.add(payload);
++                        // Tolerant application answers (kept inside the 1 s timer).
++                        if (payload.length() > 0) {
++                            char type = Character.toUpperCase(payload.charAt(0));
++                            if (type == 'P' || type == 'I') {
++                                answers.add(buildFrame("N", props, config));
++                            } else if (type == 'R' || type == 'C') {
++                                answers.add(buildFrame("M", props, config));
++                            }
++                            // M / D / W: data-link ACK only.
++                        }
++                    } else {
++                        consecutiveNaks++;
++                        if (consecutiveNaks >= 4) {
++                            // PN D00396 instrument error 318 semantics - abort the read.
++                            logger.error("DIMENSION mode: 4 consecutive checksum failures on " +
++                                    config.getPortName() + " - aborting read cycle (expected " +
++                                    expected + ", received " + actual + ")");
++                            buffer.reset();
++                            consecutiveNaks = 0;
++                            return messages.toArray(new String[0]);
++                        }
++                        logger.warn("DIMENSION checksum mismatch on " + config.getPortName() +
++                                " (expected " + expected + ", received " + actual + ") - NAK");
++                        answers.add(new byte[]{DIM_NAK});
++                    }
++                    pos = etxIdx + 1;
++                    continue;
++                }
++
++                // Stray bytes outside frames.
++                if (b == DIM_ENQ) {
++                    // Receiver saw a line error while expecting ACK/NAK - answer ACK.
++                    answers.add(new byte[]{DIM_ACK});
++                    pos++;
++                } else if (b == DIM_ACK || b == DIM_NAK || b == 0x04 /*EOT*/) {
++                    pos++; // handshake echo / sender cancel - ignore
++                } else {
++                    pos++; // noise before STX - ignore
++                }
++            }
++
++            if (pos > 0) {
++                byte[] remaining = Arrays.copyOfRange(buf, pos, buf.length);
++                buffer.reset();
++                buffer.write(remaining, 0, remaining.length);
++            }
++
++            // Queue everything (ACK/NAK + auto answers) so the source connector
++            // can write it while the instrument's 1-second timer is still running.
++            lastAnswers.addAll(answers);
++            return messages.toArray(new String[0]);
++        }
++
++        /**
++         * Protocol answers (ACK/NAK/auto N / auto M-A) generated by the last
++         * processBytes call. The SerialSourceConnector writes these to the
++         * port immediately after processBytes returns.
++         */
++        @Override
++        public byte[][] drainAnswers() {
++            byte[][] out = lastAnswers.toArray(new byte[lastAnswers.size()][]);
++            lastAnswers.clear();
++            return out;
++        }
++
++        /** The M/A acceptance frame body: M FS A FS FS + checksum E2. */
++        private byte[] buildFrame(String type, SerialTransmissionModeProperties props,
++                                  SerialPortConfig config) throws Exception {
++            // 'N' -> N FS, chk 6A (manual p.1-12). 'M' -> M FS A FS FS, chk E2 (p.1-16 MAE2).
++            Charset cs = Charset.forName(config.getCharset());
++            byte[] bodyBytes;
++            if ("N".equals(type)) {
++                bodyBytes = new byte[]{'N', DIM_FS};
++            } else {
++                bodyBytes = new byte[]{'M', DIM_FS, 'A', DIM_FS, DIM_FS};
++            }
++            int sum = 0;
++            for (byte x : bodyBytes) sum = (sum + (x & 0xFF)) & 0xFF;
++            byte[] chk = String.format("%02X", sum).getBytes(cs);
++            byte[] out = new byte[1 + bodyBytes.length + chk.length + 1];
++            int p2 = 0;
++            out[p2++] = DIM_STX;
++            System.arraycopy(bodyBytes, 0, out, p2, bodyBytes.length); p2 += bodyBytes.length;
++            System.arraycopy(chk, 0, out, p2, chk.length); p2 += chk.length;
++            out[p2] = DIM_ETX;
++            return out;
++        }
++
++        private void noteNak(SerialPortConfig config) {
++            consecutiveNaks++;
++            if (consecutiveNaks >= 4) {
++                logger.error("DIMENSION mode: repeated short frames on " + config.getPortName() +
++                        " - aborting read cycle");
++                buffer.reset();
++                consecutiveNaks = 0;
++            }
++        }
++
++        @Override
++        public void reset() {
++            buffer.reset();
++            consecutiveNaks = 0;
++            lastAnswers.clear();
++        }
++
++        @Override
++        public boolean sendsAck() { return true; }
++
++        @Override
++        public byte[] buildAck(String payload, SerialTransmissionModeProperties props,
++                               SerialPortConfig config) throws Exception {
++            return new byte[]{DIM_ACK};
++        }
++    }
++
+     // ===== Utility methods =====
+ 
+     public static void registerAll() {
+@@ -391,6 +619,7 @@ public class SerialBuiltinModeProviders {
+         SerialTransmissionModeRegistry.registerServerProvider(new FrameProvider());
+         SerialTransmissionModeRegistry.registerServerProvider(new MllpProvider());
+         SerialTransmissionModeRegistry.registerServerProvider(new AstmProvider());
++        SerialTransmissionModeRegistry.registerServerProvider(new DimensionProvider());
+     }
+ 
+     static byte[] parseHex(String hex) {
+diff --git a/server/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialDestinationConnector.java b/server/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialDestinationConnector.java
+old mode 100644
+new mode 100755
+index 65354e7..cec629c
+--- a/server/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialDestinationConnector.java
++++ b/server/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialDestinationConnector.java
+@@ -329,6 +329,16 @@ public class SerialDestinationConnector extends DestinationConnector {
+                 System.arraycopy(crlf, 0, result, pos, crlf.length);
+                 return result;
+             }
++            case "DIMENSION": {
++                // PN D00396 outbound frame (e.g. Sample Request D download):
++                // STX + TYPE + fields(FS) + CHK(2 hex, add-mod-256) + ETX.
++                // Payload must be the inner content; a trailing FS is added
++                // when absent so the frame matches the manual layout.
++                SerialTransmissionModeProvider dimProvider =
++                        SerialTransmissionModeRegistry.getServerProvider("DIMENSION");
++                if (dimProvider == null) dimProvider = new SerialBuiltinModeProviders.DimensionProvider();
++                return dimProvider.frameMessage(payload, dimProvider.getDefaultProperties(), config);
++            }
+             default: return payloadBytes;
+         }
+     }
+diff --git a/server/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialFrameAssembler.java b/server/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialFrameAssembler.java
+old mode 100644
+new mode 100755
+diff --git a/server/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialServerPlugin.java b/server/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialServerPlugin.java
+old mode 100644
+new mode 100755
+diff --git a/server/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialSourceConnector.java b/server/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialSourceConnector.java
+old mode 100644
+new mode 100755
+index c708527..a8143d5
+--- a/server/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialSourceConnector.java
++++ b/server/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialSourceConnector.java
+@@ -15,6 +15,7 @@ import com.mirth.connect.server.controllers.EventController;
+ import org.apache.log4j.Logger;
+ 
+ import java.io.ByteArrayOutputStream;
++import java.io.IOException;
+ import java.nio.charset.Charset;
+ import java.util.Arrays;
+ import java.util.concurrent.atomic.AtomicBoolean;
+@@ -29,6 +30,27 @@ import java.util.concurrent.atomic.AtomicReference;
+  *
+  * XStream registration is handled by SerialServerPlugin.init(), NOT here.
+  * This class focuses only on connector lifecycle.
++ *
++ * =========================================================================
++ * FIX (NO-DATA BUG):
++ * The old readLoop() consumed EVERY incoming byte with
++ * serialPort.readBytes() (SEMI_BLOCKING) and then, when a Mirth
++ * transmission-mode provider (e.g. ASTM E1381) was selected, created a
++ * StreamHandler over serialPort.getInputStream() — a SECOND reader on the
++ * same port. The handler never saw the already-consumed bytes, waited for
++ * ENQ until establishmentTimeout, threw, and the consumed chunk was
++ * silently discarded. Result: connection OK but ZERO data received.
++ *
++ * jSerialComm rule: use EITHER readBytes() OR getInputStream() — never both.
++ *
++ * New design (matches the working monolithic bitdreamit-astm driver):
++ *   - Provider mode (ASTM E1381 plugin): the StreamHandler is the ONLY
++ *     reader. It owns serialPort.getInputStream() exclusively; readBytes()
++ *     is NEVER called. ONE handler instance is created per connection so
++ *     protocol state (session, frame numbering, retries) persists.
++ *   - Built-in byte mode (RAW/LINE/FRAME/MLLP/ASTM fallback): readBytes()
++ *     owns the port and the consumed bytes are processed directly.
++ * =========================================================================
+  */
+ public class SerialSourceConnector extends SourceConnector {
+     private static final Logger logger = Logger.getLogger(SerialSourceConnector.class);
+@@ -46,19 +68,25 @@ public class SerialSourceConnector extends SourceConnector {
+     private SerialStatistics statistics = new SerialStatistics();
+     private ProtocolLogger protocolLogger = null;
+ 
++    // FIX: ONE StreamHandler per connection — protocol state (session established,
++    // expected frame number, retry counters) must persist across messages and across
++    // ENQ/EOT cycles. Never create a handler per read chunk.
++    private com.mirth.connect.donkey.server.message.StreamHandler modeHandler = null;
++    private SerialPort modeHandlerPort = null;
++
+     @Override
+     public void onDeploy() {
+         Object raw = getConnectorProperties();
+         if (raw == null) {
+             throw new IllegalStateException("SerialSourceConnector.onDeploy: connectorProperties is null — " +
+-                "Mirth did not provide properties. Check that source.xml sharedClassName matches " +
+-                "the class in serial-shared.jar.");
++                    "Mirth did not provide properties. Check that source.xml sharedClassName matches " +
++                    "the class in serial-shared.jar.");
+         }
+         if (!(raw instanceof SerialReceiverProperties)) {
+             throw new IllegalStateException(
+-                "SerialSourceConnector.onDeploy: expected SerialReceiverProperties but got " +
+-                raw.getClass().getName() + ". This means the wrong class is being loaded — " +
+-                "clear <mirth>/extensions/.cache/ and restart Mirth.");
++                    "SerialSourceConnector.onDeploy: expected SerialReceiverProperties but got " +
++                            raw.getClass().getName() + ". This means the wrong class is being loaded — " +
++                            "clear <mirth>/extensions/.cache/ and restart Mirth.");
+         }
+         this.connectorProperties = (SerialReceiverProperties) raw;
+ 
+@@ -72,7 +100,7 @@ public class SerialSourceConnector extends SourceConnector {
+         // Reset statistics on deploy
+         statistics.reset();
+         logger.info("SerialSourceConnector.onDeploy: properties loaded for channel " + getChannelId() +
+-                    ", port=" + config.getPortName());
++                ", port=" + config.getPortName());
+     }
+ 
+     @Override
+@@ -86,14 +114,14 @@ public class SerialSourceConnector extends SourceConnector {
+                 throw new IllegalStateException("connectorProperties is null in onStart() — onDeploy() failed.");
+             }
+             logger.info("SerialSourceConnector.onStart: starting channel " + getChannelId() +
+-                        " on port " + connectorProperties.getPortConfig().getPortName());
++                    " on port " + connectorProperties.getPortConfig().getPortName());
+             openPort();
+             startReader();
+             startHealthMonitor();
+         } catch (Throwable t) {
+             running.set(false);
+             logger.error("SerialSourceConnector.onStart FAILED for channel " + getChannelId() +
+-                         ": " + t.getClass().getName() + ": " + t.getMessage(), t);
++                    ": " + t.getClass().getName() + ": " + t.getMessage(), t);
+             if (t instanceof RuntimeException) throw (RuntimeException) t;
+             throw new RuntimeException("Failed to start serial source: " + t.getMessage(), t);
+         }
+@@ -114,6 +142,10 @@ public class SerialSourceConnector extends SourceConnector {
+ 
+     private void openPort() throws Exception {
+         serialPort = SerialPortManager.getOrOpenPort(connectorProperties.getPortConfig());
++        // FIX: invalidate any cached StreamHandler — it must be recreated against the
++        // freshly opened port so its InputStream is bound to the live connection.
++        modeHandler = null;
++        modeHandlerPort = null;
+         eventController.dispatchEvent(new ConnectionStatusEvent(
+                 getChannelId(), getMetaDataId(), getConnectorProperties().getName(), ConnectionStatusEventType.CONNECTED));
+         logger.info("Serial source connected on " + connectorProperties.getPortConfig().getPortName());
+@@ -123,6 +155,8 @@ public class SerialSourceConnector extends SourceConnector {
+         if (serialPort != null) {
+             SerialPortManager.releasePort(serialPort.getSystemPortName(), true);
+             serialPort = null;
++            modeHandler = null;
++            modeHandlerPort = null;
+             eventController.dispatchEvent(new ConnectionStatusEvent(
+                     getChannelId(), getMetaDataId(), getConnectorProperties().getName(), ConnectionStatusEventType.DISCONNECTED));
+         }
+@@ -162,6 +196,68 @@ public class SerialSourceConnector extends SourceConnector {
+ 
+     private void readLoop() {
+         SerialPortConfig config = connectorProperties.getPortConfig();
++
++        // FIX: resolve mode + provider ONCE per connection (the old code did an
++        // ExtensionController lookup on EVERY read chunk and then mis-routed the bytes).
++        TransmissionModeProperties modeProps = connectorProperties.getTransmissionModeProperties();
++        String modeName = (modeProps != null) ? modeProps.getPluginPointName() : config.getTransmissionMode();
++        if (modeName == null || modeName.isEmpty()) {
++            modeName = "RAW";
++        }
++
++        com.mirth.connect.plugins.TransmissionModeProvider provider = null;
++        try {
++            com.mirth.connect.server.controllers.ExtensionController extController =
++                    com.mirth.connect.server.controllers.ControllerFactory.getFactory().createExtensionController();
++            java.util.Map<String, com.mirth.connect.plugins.TransmissionModeProvider> providers =
++                    extController.getTransmissionModeProviders();
++            if (providers != null) {
++                // FIX (serial+Dimension): exact match first, then CASE-INSENSITIVE
++                // scan - the channel may store "Dimension", "DIMENSION" or
++                // "dimension" while the plugin point name is "Dimension".
++                provider = providers.get(modeName);
++                if (provider == null) {
++                    for (java.util.Map.Entry<String, com.mirth.connect.plugins.TransmissionModeProvider> e
++                            : providers.entrySet()) {
++                        if (e.getKey() != null && e.getKey().equalsIgnoreCase(modeName)) {
++                            provider = e.getValue();
++                            logger.info("Transmission mode provider matched case-insensitively: '"
++                                    + modeName + "' -> '" + e.getKey() + "'");
++                            break;
++                        }
++                    }
++                }
++            }
++        } catch (Throwable t) {
++            logger.warn("Could not look up Mirth transmission mode provider for '" + modeName +
++                    "': " + t.getMessage() + " — falling back to built-in mode handling");
++            provider = null;
++        }
++
++        if (provider != null) {
++            if (modeProps == null) {
++                // Channel stored only the mode name (no polymorphic properties).
++                // FIX (compile): Mirth's abstract TransmissionModeProvider does NOT
++                // declare getDefaultProperties() — the concrete plugin class defines
++                // it as an extra method, so resolve it reflectively at runtime.
++                modeProps = resolveDefaultProperties(provider);
++            }
++            if (modeProps != null) {
++                logger.info("Serial source using Mirth transmission mode provider: " + modeName);
++                if (providerReadLoop(provider, modeProps, config)) {
++                    // Provider mode ran until the channel stopped — done.
++                    return;
++                }
++                logger.warn("Transmission mode '" + modeName + "' could not be initialized — " +
++                        "falling back to built-in byte mode");
++            } else {
++                logger.warn("No transmission-mode properties available for '" + modeName +
++                        "' — falling back to built-in byte mode");
++            }
++        }
++
++        // ===== BUILT-IN BYTE MODE (RAW/LINE/FRAME/MLLP/ASTM fallback) =====
++        // readBytes() is the single owner of the port in this mode.
+         byte[] buffer = new byte[config.getBufferSize()];
+ 
+         while (running.get()) {
+@@ -186,10 +282,10 @@ public class SerialSourceConnector extends SourceConnector {
+ 
+                     if (logger.isDebugEnabled()) {
+                         logger.debug("Serial read " + bytesRead + " bytes from " + config.getPortName() +
+-                                     " (total: " + statistics.getBytesRead() + " bytes, " +
+-                                     statistics.getMessagesReceived() + " msgs)");
++                                " (total: " + statistics.getBytesRead() + " bytes, " +
++                                statistics.getMessagesReceived() + " msgs)");
+                     }
+-                    processBytes(data, config);
++                    processBuiltIn(data, config);
+                 }
+             } catch (InterruptedException e) {
+                 Thread.currentThread().interrupt();
+@@ -204,60 +300,177 @@ public class SerialSourceConnector extends SourceConnector {
+         }
+     }
+ 
+-    private void processBytes(byte[] data, SerialPortConfig config) throws Exception {
+-        // DYNAMIC: Look up transmission mode provider from Mirth's ExtensionController
+-        // This is the SAME API that TCP connector uses.
+-        // When a new mode extension is installed (e.g. ASTM E1381), it automatically
+-        // appears here without any code changes.
+-
+-        TransmissionModeProperties modeProps = connectorProperties.getTransmissionModeProperties();
+-        String modeName = (modeProps != null) ? modeProps.getPluginPointName() : config.getTransmissionMode();
+-
+-        if (modeName == null || modeName.isEmpty()) {
+-            modeName = "RAW";
+-        }
+-
+-        try {
+-            // Look up provider from Mirth's extension system — EXACT same API as TCP
+-            com.mirth.connect.server.controllers.ExtensionController extController =
+-                com.mirth.connect.server.controllers.ControllerFactory.getFactory().createExtensionController();
+-            java.util.Map<String, com.mirth.connect.plugins.TransmissionModeProvider> providers =
+-                extController.getTransmissionModeProviders();
+-
+-            com.mirth.connect.plugins.TransmissionModeProvider provider = providers.get(modeName);
++    /**
++     * FIX: Provider-driven read loop (e.g. ASTM E1381 plugin).
++     *
++     * The StreamHandler is the ONLY reader of the port: it reads byte-by-byte from
++     * serialPort.getInputStream() (exactly like the working monolithic driver does via
++     * AbstractAstmConnection.doGetInputStream().read()). serialPort.readBytes() is
++     * NEVER called in this mode, so the handler finally receives ENQ, frames, EOT.
++     *
++     * ONE handler instance is kept per connection: session state, frame numbering and
++     * retry counters survive across messages, ENQ/EOT cycles and NAK retries.
++     *
++     * IOException from handler.read() (establishment/frame timeouts, protocol aborts)
++     * is treated as RECOVERABLE: the port stays open, the handler keeps its state,
++     * the loop retries after a short pause. Only a stopped channel exits the loop.
++     */
++    private boolean providerReadLoop(com.mirth.connect.plugins.TransmissionModeProvider provider,
++                                     TransmissionModeProperties modeProps,
++                                     SerialPortConfig config) {
++        Charset cs = Charset.forName(config.getCharset());
++        int handlerInitFailures = 0;
+ 
+-            if (provider != null) {
+-                // Use the provider's StreamHandler with serial port streams
+-                logger.debug("Using Mirth transmission mode provider: " + modeName);
++        while (running.get()) {
++            try {
++                if (serialPort == null || !serialPort.isOpen()) {
++                    modeHandler = null;
++                    modeHandlerPort = null;
++                    Thread.sleep(100);
++                    continue;
++                }
+ 
+-                // Get serial port streams for the StreamHandler
+-                java.io.InputStream inputStream = serialPort.getInputStream();
+-                java.io.OutputStream outputStream = serialPort.getOutputStream();
++                // (Re)create the handler ONLY when the port instance changed —
++                // never per read chunk, otherwise the ASTM state machine resets.
++                if (modeHandler == null || modeHandlerPort != serialPort) {
++                    if (!createModeHandler(provider, modeProps, config)) {
++                        handlerInitFailures++;
++                        if (handlerInitFailures >= 3) {
++                            // Provider cannot build a handler (e.g. properties type
++                            // mismatch) — give up and let readLoop fall back to
++                            // built-in byte mode so data can still flow.
++                            return false;
++                        }
++                        Thread.sleep(1000);
++                        continue;
++                    }
++                    handlerInitFailures = 0;
++                }
+ 
+-                // Create StreamHandler — this handles framing/parsing automatically
+-                com.mirth.connect.donkey.server.message.StreamHandler streamHandler =
+-                    provider.getStreamHandler(inputStream, outputStream, null, modeProps);
++                byte[] messageBytes = modeHandler.read();
+ 
+-                // Read a message using the stream handler — returns byte[]
+-                byte[] messageBytes = streamHandler.read();
+                 if (messageBytes != null && messageBytes.length > 0) {
+-                    String message = new String(messageBytes, Charset.forName(config.getCharset()));
++                    if (protocolLogger != null) {
++                        protocolLogger.logIn(messageBytes, "framed by " + modeProps.getPluginPointName());
++                    }
++
++                    String message = new String(messageBytes, cs);
+                     try {
+                         dispatchRawMessage(new RawMessage(message));
+                         statistics.recordMessageReceived();
+                     } catch (ChannelException e) {
+-                        logger.error("Failed to dispatch message via " + modeName + " provider", e);
++                        logger.error("Failed to dispatch message via " +
++                                modeProps.getPluginPointName() + " provider", e);
+                         statistics.recordError();
+                     }
+                 }
+-                return;
++            } catch (InterruptedException e) {
++                Thread.currentThread().interrupt();
++                break;
++            } catch (IOException e) {
++                if (!running.get()) break;
++                // Recoverable: session establishment timeout (idle line), frame timeout,
++                // max transfer attempts, sender cancel (EOT). Handler state is kept.
++                logger.debug("Transmission mode '" + modeProps.getPluginPointName() +
++                        "' read cycle: " + e.getMessage());
++                statistics.recordError();
++                try { Thread.sleep(500); } catch (InterruptedException ie) {
++                    Thread.currentThread().interrupt();
++                    break;
++                }
++            } catch (Exception e) {
++                if (!running.get()) break;
++                logger.error("Serial read error on " + config.getPortName(), e);
++                statistics.recordError();
++                eventController.dispatchEvent(new ErrorEvent(
++                        getChannelId(), getMetaDataId(), null, ErrorEventType.SOURCE_CONNECTOR,
++                        getConnectorProperties().getName(), "Serial read error", e.getMessage(), e));
++                try { Thread.sleep(500); } catch (InterruptedException ie) {
++                    Thread.currentThread().interrupt();
++                    break;
++                }
++            }
++        }
++
++        logger.info("Provider read loop exiting for channel " + getChannelId());
++        return true;
++    }
++
++    /**
++     * FIX (compile error "cannot find symbol: getDefaultProperties"):
++     * Mirth's abstract com.mirth.connect.plugins.TransmissionModeProvider only
++     * declares getPluginPointName() and getStreamHandler(...). The concrete
++     * plugin class (e.g. ASTME1381TransmissionModePlugin) adds
++     * getDefaultProperties() as an extra public method. serial-connector must
++     * stay compile-independent of the E1381 plugin, so the method is resolved
++     * reflectively at runtime.
++     *
++     * @return the provider's default properties, or null when the provider does
++     *         not expose them (caller falls back to built-in byte mode).
++     */
++    private TransmissionModeProperties resolveDefaultProperties(
++            com.mirth.connect.plugins.TransmissionModeProvider provider) {
++        try {
++            java.lang.reflect.Method m = provider.getClass().getMethod("getDefaultProperties");
++            Object result = m.invoke(provider);
++            if (result instanceof TransmissionModeProperties) {
++                logger.info("Using provider default properties: " + result.getClass().getName());
++                return (TransmissionModeProperties) result;
++            }
++        } catch (Throwable t) {
++            logger.debug("Provider " + provider.getClass().getName() +
++                    " does not expose getDefaultProperties(): " + t.getMessage());
++        }
++        return null;
++    }
++
++    /**
++     * Creates the StreamHandler for the current port.
++     *
++     * @return true on success; false on ANY failure (port not open, null streams,
++     *         or the provider rejecting the properties) — caller counts failures
++     *         and falls back to built-in byte mode after 3 strikes.
++     */
++    private boolean createModeHandler(com.mirth.connect.plugins.TransmissionModeProvider provider,
++                                      TransmissionModeProperties modeProps,
++                                      SerialPortConfig config) {
++        try {
++            if (serialPort == null || !serialPort.isOpen()) {
++                return false;
++            }
++            java.io.InputStream in = serialPort.getInputStream();
++            java.io.OutputStream out = serialPort.getOutputStream();
++            if (in == null || out == null) {
++                logger.warn("Serial port " + config.getPortName() + " returned null stream(s)");
++                return false;
+             }
++            modeHandler = provider.getStreamHandler(in, out, null, modeProps);
++            modeHandlerPort = serialPort;
++            logger.info("StreamHandler created for transmission mode: " +
++                    modeProps.getPluginPointName());
++            return true;
+         } catch (Throwable t) {
+-            logger.warn("Could not use Mirth transmission mode provider for '" + modeName +
+-                        "': " + t.getMessage() + " — falling back to built-in mode handling");
++            logger.error("Failed to create StreamHandler for '" +
++                    modeProps.getPluginPointName() + "': " +
++                    t.getClass().getName() + ": " + t.getMessage(), t);
++            modeHandler = null;
++            modeHandlerPort = null;
++            return false;
++        }
++    }
++
++    // ===== BUILT-IN MODE PROCESSING (byte mode) =====
++    // The bytes passed in here were consumed by readBytes() in readLoop() —
++    // this path owns them. Provider modes never reach this method.
++
++    private void processBuiltIn(byte[] data, SerialPortConfig config) throws Exception {
++        TransmissionModeProperties modeProps = connectorProperties.getTransmissionModeProperties();
++        String modeName = (modeProps != null) ? modeProps.getPluginPointName() : config.getTransmissionMode();
++
++        if (modeName == null || modeName.isEmpty()) {
++            modeName = "RAW";
+         }
+ 
+-        // FALLBACK: Built-in mode handling (for when no Mirth extension provider is available)
+         switch (modeName.toUpperCase()) {
+             case "RAW":           dispatchRaw(data, config); break;
+             case "LINE":          processLineMode(data, config); break;
+@@ -266,8 +479,77 @@ public class SerialSourceConnector extends SourceConnector {
+             case "ASTM":          processAstmMode(data, config); break;
+             case "BASIC":         processLineMode(data, config); break;
+             case "ASTM_E1381":    processAstmMode(data, config); break;
+-            default:              dispatchRaw(data, config);
++            default:
++                // FIX (serial+Dimension): unknown modes ("Dimension", "DIMENSION",
++                // ...) used to fall straight through to dispatchRaw - raw chunks
++                // were dispatched WITHOUT any ACK, so the instrument retried 4x
++                // and raised error 318/321 ("serial not work"). Route them via
++                // the serial transmission-mode registry first (includes the
++                // built-in DIMENSION mode with full PN D00396 framing/ACK/auto
++                // answers), and only dispatch raw when nothing matches.
++                if (processViaSerialProvider(modeName, data, config)) {
++                    break;
++                }
++                logger.warn("Serial transmission mode '" + modeName
++                        + "' has no provider - dispatching raw bytes (no protocol ACK possible)");
++                dispatchRaw(data, config);
++        }
++    }
++
++    /**
++     * Route a read chunk through a registered serial transmission-mode
++     * provider (case-insensitive lookup). The provider returns complete
++     * message payloads plus any protocol answers (ACK/NAK/auto N / auto M-A)
++     * which are written to the port immediately.
++     *
++     * @return true when a provider handled the chunk
++     */
++    private boolean processViaSerialProvider(String modeName, byte[] data, SerialPortConfig config) throws Exception {
++        SerialTransmissionModeProvider serialProvider =
++                SerialTransmissionModeRegistry.getServerProvider(modeName);
++        if (serialProvider == null) {
++            // Case-insensitive scan (registry keys are uppercase).
++            for (java.util.Map.Entry<String, SerialTransmissionModeProvider> e
++                    : SerialTransmissionModeRegistry.getServerProviders().entrySet()) {
++                if (e.getKey() != null && e.getKey().equalsIgnoreCase(modeName)) {
++                    serialProvider = e.getValue();
++                    break;
++                }
++            }
++        }
++        if (serialProvider == null) {
++            return false;
++        }
++
++        logger.info("Serial source using built-in serial provider: " + serialProvider.getPluginPointName());
++        String[] messages = serialProvider.processBytes(
++                data, serialProvider.getDefaultProperties(), config);
++
++        // Write protocol answers (ACK/NAK/auto frames) while the instrument
++        // timer is still running - the provider queued them in order.
++        byte[][] answers = serialProvider.drainAnswers();
++        if (answers.length > 0 && serialPort != null && serialPort.isOpen()) {
++            for (byte[] answer : answers) {
++                serialPort.writeBytes(answer, answer.length);
++                if (protocolLogger != null) {
++                    protocolLogger.logOut(answer, "answer via " + serialProvider.getPluginPointName());
++                }
++            }
++        }
++
++        if (messages != null) {
++            for (String message : messages) {
++                try {
++                    dispatchRawMessage(new RawMessage(message));
++                    statistics.recordMessageReceived();
++                } catch (ChannelException e) {
++                    logger.error("Failed to dispatch message from serial provider "
++                            + serialProvider.getPluginPointName(), e);
++                    statistics.recordError();
++                }
++            }
+         }
++        return true;
+     }
+ 
+     // ===== AUTO-DETECT MODE =====
+@@ -618,7 +900,7 @@ public class SerialSourceConnector extends SourceConnector {
+                 if (portDown || readerDead) {
+                     if (reconnectAttempts < maxReconnect) {
+                         logger.warn("Reconnecting... (" + (reconnectAttempts + 1) + "/" + maxReconnect +
+-                                    ") portDown=" + portDown + " readerDead=" + readerDead);
++                                ") portDown=" + portDown + " readerDead=" + readerDead);
+                         statistics.recordReconnect();
+                         try {
+                             closePort();
+diff --git a/shared/src/com/bitdreamit/mirth/labextensions/serialconnector/ProtocolLogEntry.java b/shared/src/com/bitdreamit/mirth/labextensions/serialconnector/ProtocolLogEntry.java
+old mode 100644
+new mode 100755
+diff --git a/shared/src/com/bitdreamit/mirth/labextensions/serialconnector/ProtocolLogger.java b/shared/src/com/bitdreamit/mirth/labextensions/serialconnector/ProtocolLogger.java
+old mode 100644
+new mode 100755
+diff --git a/shared/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialDispatcherProperties.java b/shared/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialDispatcherProperties.java
+old mode 100644
+new mode 100755
+diff --git a/shared/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialPortConfig.java b/shared/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialPortConfig.java
+old mode 100644
+new mode 100755
+diff --git a/shared/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialPortManager.java b/shared/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialPortManager.java
+old mode 100644
+new mode 100755
+diff --git a/shared/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialReceiverProperties.java b/shared/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialReceiverProperties.java
+old mode 100644
+new mode 100755
+diff --git a/shared/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialStatistics.java b/shared/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialStatistics.java
+old mode 100644
+new mode 100755
+diff --git a/shared/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialTransmissionModeClientProvider.java b/shared/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialTransmissionModeClientProvider.java
+old mode 100644
+new mode 100755
+diff --git a/shared/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialTransmissionModeProperties.java b/shared/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialTransmissionModeProperties.java
+old mode 100644
+new mode 100755
+diff --git a/shared/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialTransmissionModeProvider.java b/shared/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialTransmissionModeProvider.java
+old mode 100644
+new mode 100755
+index e641371..819bd77
+--- a/shared/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialTransmissionModeProvider.java
++++ b/shared/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialTransmissionModeProvider.java
+@@ -52,6 +52,13 @@ public abstract class SerialTransmissionModeProvider {
+      */
+     public abstract void reset();
+ 
++    /**
++     * Protocol answers (ACK/NAK/auto-response frames) generated by the last
++     * processBytes call. The SerialSourceConnector writes these to the port
++     * immediately after processBytes returns. Default: no answers.
++     */
++    public byte[][] drainAnswers() { return new byte[0][]; }
++
+     /**
+      * Whether this mode sends an ACK/NAK back on the source side.
+      */
+diff --git a/shared/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialTransmissionModeRegistry.java b/shared/src/com/bitdreamit/mirth/labextensions/serialconnector/SerialTransmissionModeRegistry.java
+old mode 100644
+new mode 100755
+diff --git a/source.xml b/source.xml
+old mode 100644
+new mode 100755
+index b960c1d..fd67db0
+--- a/source.xml
++++ b/source.xml
+@@ -2,7 +2,7 @@
+ <connectorMetaData path="bitdreamit-serial-connector">
+     <name>Serial Reader</name>
+     <author>Bit Dream IT</author>
+-    <pluginVersion>1.3.0</pluginVersion>
++    <pluginVersion>1.4.0</pluginVersion>
+     <mirthVersion>3.8.0,3.8.1,3.9.0,3.9.1,3.10.0,3.10.1,3.11.0,3.12.0,4.0.0,4.0.1,4.1.0,4.1.1,4.2.0,4.3.0,4.4.0,4.4.1,4.4.2,4.5.0,4.5.1,4.5.2,4.5.3,4.5.4,4.6.0,4.6.1,4.6.2,4.7.0,4.7.1,4.7.2</mirthVersion>
+     <url>https://www.bitdreamit.com</url>
+     <description>BitDreamIT Serial Source — RS-232/RS-485 reader with auto-detect, protocol analyzer, health monitoring, and signal control.</description>

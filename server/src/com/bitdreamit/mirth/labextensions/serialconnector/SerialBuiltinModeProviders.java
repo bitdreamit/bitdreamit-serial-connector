@@ -17,6 +17,9 @@ import java.util.List;
  */
 public class SerialBuiltinModeProviders {
 
+    private static final org.apache.log4j.Logger logger =
+            org.apache.log4j.Logger.getLogger(SerialBuiltinModeProviders.class);
+
     // ===== RAW mode =====
 
     public static class RawProvider extends SerialTransmissionModeProvider {
@@ -383,6 +386,231 @@ public class SerialBuiltinModeProviders {
         }
     }
 
+    // ===== DIMENSION mode (Siemens Dimension PN D00396) =====
+
+    /**
+     * Dimension provider — native Siemens Dimension host-link framing for
+     * serial lines (PN D00396 Rev.2). Mirrors the DLC rules of the
+     * bitdreamit-dimension-transmission extension:
+     *
+     *   Frame  = STX + TYPE + fields(FS-delimited) + CHK(2 hex) + ETX
+     *   CHK    = 8-bit sum mod 256 of all bytes between STX and CHK,
+     *            two UPPERCASE ASCII hex digits (chk sits BEFORE ETX)
+     *   ACK    0x06 after every correct frame (1-second instrument timer)
+     *   NAK    0x15 on bad checksum; sender retransmits max 4 times
+     *   ENQ    from the receiver on line error - answered with ACK
+     *
+     * Tolerant application answers (same policy as the extension's
+     * auto-response path, so a lone serial deployment stays protocol-clean):
+     *   P (poll)  or I (query)  ->  No Request frame  <STX>N<FS>6A<ETX>
+     *   R (result) or C (calib) ->  Acceptance frame  <STX>M<FS>A<FS><FS>E2<ETX>
+     *   M / D / W               ->  data-link ACK only
+     *
+     * When the bitdreamit-dimension-transmission extension is installed, the
+     * SerialSourceConnector prefers the full Mirth "Dimension" provider
+     * (order download via DimensionOrderRegistry); this built-in mode is the
+     * self-contained fallback that keeps instruments from erroring 318/321.
+     */
+    public static class DimensionProvider extends SerialTransmissionModeProvider {
+        public static final String NAME = "DIMENSION";
+        private ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        private int consecutiveNaks = 0;
+        private java.util.List<byte[]> lastAnswers = new java.util.ArrayList<byte[]>();
+
+        // Frame control bytes (PN D00396 p.1-5)
+        private static final byte DIM_STX = 0x02;
+        private static final byte DIM_ETX = 0x03;
+        private static final byte DIM_FS  = 0x1C;
+        private static final byte DIM_ENQ = 0x05;
+        private static final byte DIM_ACK = 0x06;
+        private static final byte DIM_NAK = 0x15;
+
+        @Override
+        public String getPluginPointName() { return NAME; }
+
+        @Override
+        public SerialTransmissionModeProperties getDefaultProperties() {
+            return new SerialTransmissionModeProperties(NAME);
+        }
+
+        @Override
+        public byte[] frameMessage(String payload, SerialTransmissionModeProperties props,
+                                   SerialPortConfig config) throws Exception {
+            Charset cs = Charset.forName(config.getCharset());
+            // Payload is the inner content (TYPE + fields). Dimension field
+            // layout ends with a trailing FS before CHK - add one if absent.
+            String body = (payload != null) ? payload : "";
+            if (!body.isEmpty() && body.charAt(body.length() - 1) != (char) (DIM_FS & 0xFF)) {
+                body = body + (char) (DIM_FS & 0xFF);
+            }
+            byte[] bodyBytes = body.getBytes(cs);
+            int sum = 0;
+            for (byte b : bodyBytes) sum = (sum + (b & 0xFF)) & 0xFF;
+            byte[] chk = String.format("%02X", sum).getBytes(cs);
+            byte[] out = new byte[1 + bodyBytes.length + chk.length + 1];
+            int pos = 0;
+            out[pos++] = DIM_STX;
+            System.arraycopy(bodyBytes, 0, out, pos, bodyBytes.length); pos += bodyBytes.length;
+            System.arraycopy(chk, 0, out, pos, chk.length); pos += chk.length;
+            out[pos] = DIM_ETX;
+            return out;
+        }
+
+        @Override
+        public String[] processBytes(byte[] data, SerialTransmissionModeProperties props,
+                                     SerialPortConfig config) throws Exception {
+            buffer.write(data, 0, data.length);
+            byte[] buf = buffer.toByteArray();
+            Charset cs = Charset.forName(config.getCharset());
+            java.util.List<String> messages = new java.util.ArrayList<String>();
+            java.util.List<byte[]> answers = new java.util.ArrayList<byte[]>();
+            int pos = 0;
+
+            while (pos < buf.length) {
+                byte b = buf[pos];
+
+                if (b == DIM_STX) {
+                    // Find the frame end.
+                    int etxIdx = indexOfByte(buf, DIM_ETX, pos + 1);
+                    if (etxIdx < 0) break; // incomplete - wait for more bytes
+
+                    int segmentLen = etxIdx - pos; // STX .. before ETX
+                    if (segmentLen < 4) {
+                        // Shorter than STX + TYPE + CHK(2) - NAK and drop.
+                        answers.add(new byte[]{DIM_NAK});
+                        noteNak(config);
+                        pos = etxIdx + 1;
+                        continue;
+                    }
+                    byte[] body = Arrays.copyOfRange(buf, pos + 1, etxIdx - 2); // TYPE..fields (no CHK)
+                    byte chk1 = buf[etxIdx - 2];
+                    byte chk2 = buf[etxIdx - 1];
+
+                    int sum = 0;
+                    for (byte x : body) sum = (sum + (x & 0xFF)) & 0xFF;
+                    String expected = String.format("%02X", sum);
+                    String actual = "" + (char) (chk1 & 0xFF) + (char) (chk2 & 0xFF);
+
+                    if (expected.equalsIgnoreCase(actual)) {
+                        consecutiveNaks = 0;
+                        answers.add(new byte[]{DIM_ACK});
+                        String payload = new String(body, cs);
+                        messages.add(payload);
+                        // Tolerant application answers (kept inside the 1 s timer).
+                        if (payload.length() > 0) {
+                            char type = Character.toUpperCase(payload.charAt(0));
+                            if (type == 'P' || type == 'I') {
+                                answers.add(buildFrame("N", props, config));
+                            } else if (type == 'R' || type == 'C') {
+                                answers.add(buildFrame("M", props, config));
+                            }
+                            // M / D / W: data-link ACK only.
+                        }
+                    } else {
+                        consecutiveNaks++;
+                        if (consecutiveNaks >= 4) {
+                            // PN D00396 instrument error 318 semantics - abort the read.
+                            logger.error("DIMENSION mode: 4 consecutive checksum failures on " +
+                                    config.getPortName() + " - aborting read cycle (expected " +
+                                    expected + ", received " + actual + ")");
+                            buffer.reset();
+                            consecutiveNaks = 0;
+                            return messages.toArray(new String[0]);
+                        }
+                        logger.warn("DIMENSION checksum mismatch on " + config.getPortName() +
+                                " (expected " + expected + ", received " + actual + ") - NAK");
+                        answers.add(new byte[]{DIM_NAK});
+                    }
+                    pos = etxIdx + 1;
+                    continue;
+                }
+
+                // Stray bytes outside frames.
+                if (b == DIM_ENQ) {
+                    // Receiver saw a line error while expecting ACK/NAK - answer ACK.
+                    answers.add(new byte[]{DIM_ACK});
+                    pos++;
+                } else if (b == DIM_ACK || b == DIM_NAK || b == 0x04 /*EOT*/) {
+                    pos++; // handshake echo / sender cancel - ignore
+                } else {
+                    pos++; // noise before STX - ignore
+                }
+            }
+
+            if (pos > 0) {
+                byte[] remaining = Arrays.copyOfRange(buf, pos, buf.length);
+                buffer.reset();
+                buffer.write(remaining, 0, remaining.length);
+            }
+
+            // Queue everything (ACK/NAK + auto answers) so the source connector
+            // can write it while the instrument's 1-second timer is still running.
+            lastAnswers.addAll(answers);
+            return messages.toArray(new String[0]);
+        }
+
+        /**
+         * Protocol answers (ACK/NAK/auto N / auto M-A) generated by the last
+         * processBytes call. The SerialSourceConnector writes these to the
+         * port immediately after processBytes returns.
+         */
+        @Override
+        public byte[][] drainAnswers() {
+            byte[][] out = lastAnswers.toArray(new byte[lastAnswers.size()][]);
+            lastAnswers.clear();
+            return out;
+        }
+
+        /** The M/A acceptance frame body: M FS A FS FS + checksum E2. */
+        private byte[] buildFrame(String type, SerialTransmissionModeProperties props,
+                                  SerialPortConfig config) throws Exception {
+            // 'N' -> N FS, chk 6A (manual p.1-12). 'M' -> M FS A FS FS, chk E2 (p.1-16 MAE2).
+            Charset cs = Charset.forName(config.getCharset());
+            byte[] bodyBytes;
+            if ("N".equals(type)) {
+                bodyBytes = new byte[]{'N', DIM_FS};
+            } else {
+                bodyBytes = new byte[]{'M', DIM_FS, 'A', DIM_FS, DIM_FS};
+            }
+            int sum = 0;
+            for (byte x : bodyBytes) sum = (sum + (x & 0xFF)) & 0xFF;
+            byte[] chk = String.format("%02X", sum).getBytes(cs);
+            byte[] out = new byte[1 + bodyBytes.length + chk.length + 1];
+            int p2 = 0;
+            out[p2++] = DIM_STX;
+            System.arraycopy(bodyBytes, 0, out, p2, bodyBytes.length); p2 += bodyBytes.length;
+            System.arraycopy(chk, 0, out, p2, chk.length); p2 += chk.length;
+            out[p2] = DIM_ETX;
+            return out;
+        }
+
+        private void noteNak(SerialPortConfig config) {
+            consecutiveNaks++;
+            if (consecutiveNaks >= 4) {
+                logger.error("DIMENSION mode: repeated short frames on " + config.getPortName() +
+                        " - aborting read cycle");
+                buffer.reset();
+                consecutiveNaks = 0;
+            }
+        }
+
+        @Override
+        public void reset() {
+            buffer.reset();
+            consecutiveNaks = 0;
+            lastAnswers.clear();
+        }
+
+        @Override
+        public boolean sendsAck() { return true; }
+
+        @Override
+        public byte[] buildAck(String payload, SerialTransmissionModeProperties props,
+                               SerialPortConfig config) throws Exception {
+            return new byte[]{DIM_ACK};
+        }
+    }
+
     // ===== Utility methods =====
 
     public static void registerAll() {
@@ -391,6 +619,7 @@ public class SerialBuiltinModeProviders {
         SerialTransmissionModeRegistry.registerServerProvider(new FrameProvider());
         SerialTransmissionModeRegistry.registerServerProvider(new MllpProvider());
         SerialTransmissionModeRegistry.registerServerProvider(new AstmProvider());
+        SerialTransmissionModeRegistry.registerServerProvider(new DimensionProvider());
     }
 
     static byte[] parseHex(String hex) {

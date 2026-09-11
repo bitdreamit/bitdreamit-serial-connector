@@ -329,6 +329,16 @@ public class SerialDestinationConnector extends DestinationConnector {
                 System.arraycopy(crlf, 0, result, pos, crlf.length);
                 return result;
             }
+            case "DIMENSION": {
+                // PN D00396 outbound frame (e.g. Sample Request D download):
+                // STX + TYPE + fields(FS) + CHK(2 hex, add-mod-256) + ETX.
+                // Payload must be the inner content; a trailing FS is added
+                // when absent so the frame matches the manual layout.
+                SerialTransmissionModeProvider dimProvider =
+                        SerialTransmissionModeRegistry.getServerProvider("DIMENSION");
+                if (dimProvider == null) dimProvider = new SerialBuiltinModeProviders.DimensionProvider();
+                return dimProvider.frameMessage(payload, dimProvider.getDefaultProperties(), config);
+            }
             default: return payloadBytes;
         }
     }
