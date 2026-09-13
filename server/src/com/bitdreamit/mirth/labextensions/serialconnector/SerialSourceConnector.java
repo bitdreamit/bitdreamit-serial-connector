@@ -359,6 +359,16 @@ public class SerialSourceConnector extends SourceConnector {
                         dispatchRawMessage(new RawMessage(message));
                         statistics.recordMessageReceived();
                     } catch (ChannelException e) {
+                        // FIX: If the channel is being stopped, dispatchRawMessage()
+                        // throws ChannelException wrapping InterruptedException (from
+                        // the channel semaphore acquire). We MUST break out of the loop
+                        // here, otherwise the reader thread never exits and the channel
+                        // cannot be undeployed.
+                        if (!running.get() || isInterrupted(e)) {
+                            logger.info("Channel stopping — exiting provider read loop");
+                            Thread.currentThread().interrupt();
+                            break;
+                        }
                         logger.error("Failed to dispatch message via " +
                                 modeProps.getPluginPointName() + " provider", e);
                         statistics.recordError();
@@ -408,6 +418,20 @@ public class SerialSourceConnector extends SourceConnector {
      * @return the provider's default properties, or null when the provider does
      *         not expose them (caller falls back to built-in byte mode).
      */
+    /**
+     * FIX: Check if a ChannelException (or any throwable) wraps an InterruptedException.
+     * When the channel is being stopped, dispatchRawMessage() blocks on the channel
+     * semaphore, gets interrupted, and throws ChannelException wrapping InterruptedException.
+     * We need to detect this to break out of the read loop cleanly.
+     */
+    private boolean isInterrupted(Throwable t) {
+        while (t != null) {
+            if (t instanceof InterruptedException) return true;
+            t = t.getCause();
+        }
+        return false;
+    }
+
     private TransmissionModeProperties resolveDefaultProperties(
             com.mirth.connect.plugins.TransmissionModeProvider provider) {
         try {
@@ -543,6 +567,12 @@ public class SerialSourceConnector extends SourceConnector {
                     dispatchRawMessage(new RawMessage(message));
                     statistics.recordMessageReceived();
                 } catch (ChannelException e) {
+                    // FIX: Channel stopping — propagate interruption
+                    if (!running.get() || isInterrupted(e)) {
+                        logger.info("Channel stopping — serial provider dispatch interrupted");
+                        Thread.currentThread().interrupt();
+                        throw new RuntimeException("Channel stopping", e);
+                    }
                     logger.error("Failed to dispatch message from serial provider "
                             + serialProvider.getPluginPointName(), e);
                     statistics.recordError();
@@ -716,6 +746,12 @@ public class SerialSourceConnector extends SourceConnector {
             dispatchRawMessage(new RawMessage(payload));
             statistics.recordMessageReceived();
         } catch (ChannelException e) {
+            // FIX: If channel is stopping, don't log as error — just exit
+            if (!running.get() || isInterrupted(e)) {
+                logger.info("Channel stopping — raw dispatch interrupted");
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("Channel stopping", e);
+            }
             logger.error("Failed to dispatch raw message", e);
             statistics.recordError();
         }
