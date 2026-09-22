@@ -356,8 +356,59 @@ public class SerialSourceConnector extends SourceConnector {
 
                     String message = new String(messageBytes, cs);
                     try {
-                        dispatchRawMessage(new RawMessage(message));
+                        // BIDIRECTIONAL FIX (v1.4.0): mirror the stock TcpReceiver
+                        // non-batch flow exactly:
+                        //   1. dispatchRawMessage(rawMessage)  (synchronous - waits
+                        //      until the channel finished processing the message)
+                        //   2. streamHandler.commit(true)
+                        //   3. streamHandler.write(selectedResponse)
+                        // The old code dispatched and DROPPED the result, so the
+                        // ASTM_ORDER response built by the channel transformer was
+                        // never sent back over the serial line: the analyzer's host
+                        // query got ACKs but NO answer session (timeout symptom).
+                        RawMessage rawMessage = new RawMessage(message);
+                        java.util.Map<String, Object> sourceMap =
+                                new java.util.HashMap<String, Object>();
+                        sourceMap.put("portName", config.getPortName());
+                        sourceMap.put("localAddress", config.getPortName());
+                        rawMessage.setSourceMap(sourceMap);
+
+                        DispatchResult dispatchResult = dispatchRawMessage(rawMessage);
                         statistics.recordMessageReceived();
+
+                        try {
+                            modeHandler.commit(true);
+                        } catch (IOException ce) {
+                            logger.debug("StreamHandler commit failed on "
+                                    + config.getPortName() + ": " + ce.getMessage());
+                        }
+
+                        if (dispatchResult != null
+                                && dispatchResult.getSelectedResponse() != null) {
+                            dispatchResult.setAttemptedResponse(true);
+                            Object respMsg = dispatchResult.getSelectedResponse().getMessage();
+                            if (respMsg != null && String.valueOf(respMsg).length() > 0) {
+                                byte[] respBytes = String.valueOf(respMsg).getBytes(cs);
+                                try {
+                                    // The E1381 (or any) provider handler performs the
+                                    // full sender-side session: drain line, ENQ, framed
+                                    // records, EOT — on the SAME serial port.
+                                    modeHandler.write(respBytes);
+                                    if (protocolLogger != null) {
+                                        protocolLogger.logOut(respBytes,
+                                                "response via " + modeProps.getPluginPointName());
+                                    }
+                                    logger.info("Sent provider-mode response ("
+                                            + respBytes.length + " bytes) on "
+                                            + config.getPortName());
+                                } catch (IOException we) {
+                                    logger.error("Failed to send provider-mode response on "
+                                            + config.getPortName() + ": " + we.getMessage(), we);
+                                    dispatchResult.setResponseError(
+                                            "Error sending response: " + we.getMessage());
+                                }
+                            }
+                        }
                     } catch (ChannelException e) {
                         // FIX: If the channel is being stopped, dispatchRawMessage()
                         // throws ChannelException wrapping InterruptedException (from
@@ -965,5 +1016,48 @@ public class SerialSourceConnector extends SourceConnector {
 
     @Override
     public void handleRecoveredResponse(DispatchResult dispatchResult) {
+        // BIDIRECTIONAL FIX (v1.4.0): message-recovery path (Mirth re-dispatches
+        // a previously stored message on startup/reprocessing). Mirror TcpReceiver:
+        // if the recovered message carries a selected response and a provider
+        // StreamHandler is currently attached to an open port, write the response
+        // over the same serial line. A serial line has no "respond on new
+        // connection" concept, so when no live handler exists we record a
+        // response error instead of silently dropping the answer.
+        try {
+            if (dispatchResult == null || dispatchResult.getSelectedResponse() == null) {
+                return;
+            }
+            if (modeHandler == null || serialPort == null || !serialPort.isOpen()) {
+                dispatchResult.setResponseError(
+                        "Cannot send recovered response: serial port/StreamHandler not available (channel "
+                                + getChannelId() + ")");
+                return;
+            }
+            dispatchResult.setAttemptedResponse(true);
+            Object respMsg = dispatchResult.getSelectedResponse().getMessage();
+            if (respMsg != null && String.valueOf(respMsg).length() > 0) {
+                String csName = "UTF-8";
+                try {
+                    csName = connectorProperties.getPortConfig().getCharset();
+                } catch (Throwable ignore) {
+                }
+                byte[] respBytes = String.valueOf(respMsg).getBytes(Charset.forName(csName));
+                modeHandler.write(respBytes);
+                if (protocolLogger != null) {
+                    protocolLogger.logOut(respBytes, "recovered response");
+                }
+                logger.info("Sent recovered response (" + respBytes.length
+                        + " bytes) on serial port");
+            }
+        } catch (Exception e) {
+            if (dispatchResult != null) {
+                dispatchResult.setResponseError("Error sending recovered response: " + e.getMessage());
+            }
+            logger.error("Failed to send recovered response", e);
+        } finally {
+            if (dispatchResult != null) {
+                finishDispatch(dispatchResult);
+            }
+        }
     }
 }
